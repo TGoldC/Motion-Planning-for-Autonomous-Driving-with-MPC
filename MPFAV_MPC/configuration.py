@@ -24,8 +24,11 @@ class ReferencePath:
         self.id_scenario = id_scenario
         self.scenario, self.planning_problem_set = CommonRoadFileReader(self.path_scenario + self.id_scenario).open()
         self.planning_problem = list(self.planning_problem_set.planning_problem_dict.values())[0]
+        self.position_init, self.reference_path = self._generate_reference_path()
+        self.desired_velocity = self.planning_problem.goal.state_list[0].velocity.end
+        self.accumulated_distance_in_reference_path = self._accumulated_distance_in_reference_path()
 
-    def reference_path(self):
+    def _generate_reference_path(self):
         """
         position_init: 1D array (x_pos, y_pos); the initial position of the planning problem
         reference_path: the output of route planner, which is considered as reference path
@@ -44,33 +47,21 @@ class ReferencePath:
             renderer.render()
             plt.show()
         if plot_route:
-            _, reference_path = self.reference_path()
-            visualize_route(reference_path, draw_route_lanelets=True, draw_reference_path=True, size_x=6)
+            visualize_route(self.reference_path, draw_route_lanelets=True, draw_reference_path=True, size_x=6)
 
+    def _accumulated_distance_in_reference_path(self):
+        return np.cumsum(np.linalg.norm(np.diff(self.reference_path, axis=0), axis=1))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    def find_nearest_point_in_reference_path(self, t_past):
+        """
+        :param desired_velocity: velocity in the goal region, which is defined in planning problem
+        :param t_past: past time from initial position to current step
+        :return: index in reference path. The distance from initial position to this index position is nearest distance
+        to desired distance.
+        """
+        desired_distance = self.desired_velocity * t_past
+        index = np.abs(self.accumulated_distance_in_reference_path - desired_distance).argmin()
+        return index + 1
 
 """
 # initialization
