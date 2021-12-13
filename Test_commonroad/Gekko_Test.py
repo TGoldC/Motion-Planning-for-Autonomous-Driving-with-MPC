@@ -44,7 +44,7 @@ finalstate = [10.0, 0.0, 0.0, 2.0, 0.0]
 # x4 = v (velocity in x-direction)
 # x5 = psi (heading)
 
-sxa = m.SV(value=startstate[0])
+sxa = m.SV(value=startstate[0]) # state variable
 sya = m.SV(value=startstate[1])
 deltaa = m.SV(value=startstate[2], lb=mindeltaa, ub=maxdeltaa)
 va = m.SV(value=startstate[3], lb=minva, ub=maxva)
@@ -54,7 +54,7 @@ psia = m.SV(value=startstate[4])
 # u1 = vdelta (velocity of steering angle)
 # u2 = longa (longitudinal acceleration)
 
-vdeltaa = m.CV(value=0, lb=mindeltava, ub=maxdeltava)
+vdeltaa = m.CV(value=0, lb=mindeltava, ub=maxdeltava)  # control variable
 longaa = m.CV(value=0)
 
 # Define the state space model
@@ -81,9 +81,9 @@ m.Obj(1*longaa**2) # minimize longitudinal acceleration
 #m.fix(psia, pos = finalt, val=finalstate[4])
 
 p = np.zeros(len(m.time))
-p[finalt] = 1000
+p[finalt] = 1000    # p是一个一维数组，只有最后一项是1000
 final = m.Param(p)
-m.Minimize(final*(sxa-finalstate[0])**2)
+m.Minimize(final*(sxa-finalstate[0])**2)    # 相当于只对终了时刻的状态 需要它越接近0越好
 m.Minimize(final*(sya-finalstate[1])**2)
 m.Minimize(final*(deltaa-finalstate[2])**2)
 m.Minimize(final*(va-finalstate[3])**2)
