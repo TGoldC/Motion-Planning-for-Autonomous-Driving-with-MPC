@@ -91,8 +91,8 @@ static void getDims(const solver_int stage, solver_int* nvar, solver_int* neq, s
     const solver_int neqArr[NSTAGES] = {5, 5, 5, 5, 5, 5, 5, 5, 5, 5};
     const solver_int dimhArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     const solver_int dimpArr[NSTAGES] = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
-    const solver_int dimlArr[NSTAGES] = {6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
-    const solver_int dimuArr[NSTAGES] = {6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
+    const solver_int dimlArr[NSTAGES] = {7, 7, 7, 7, 7, 7, 7, 7, 7, 7};
+    const solver_int dimuArr[NSTAGES] = {7, 7, 7, 7, 7, 7, 7, 7, 7, 7};
     const solver_int dimhlArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     const solver_int dimhuArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -184,8 +184,8 @@ void mexFunction( solver_int nlhs, mxArray *plhs[], solver_int nrhs, const mxArr
     // Allocate memory 
     solver_float *z, *p, *y, *l, *obj, *jacobj, *c, *jacc, *h, *jach, *hess;
 
-	mxArray* h_mex;
-	mxArray* jach_mex;
+	mxArray* obj_mex;
+	mxArray* gradobj_mex;
 
 
     // get data
@@ -228,12 +228,12 @@ void mexFunction( solver_int nlhs, mxArray *plhs[], solver_int nrhs, const mxArr
 
     // Evaluate fcns and read output into mex format
 	(z, y, l, p, obj, jacobj, c, jacc, h, jach, hess, stage, 0, 0);
-	h_mex = mxCreateDoubleMatrix(dimh, 1, mxREAL);
-	jach_mex = mxCreateDoubleMatrix(dimh, nvar, mxREAL);
-	copyCArrayToM_FORCESNLPsolver(h, mxGetPr(h_mex), dimh);
-	copyCArrayToM_FORCESNLPsolver(jach, mxGetPr(jach_mex), dimh*nvar);
-	plhs[0] = h_mex;
-	plhs[1] = jach_mex;
+	obj_mex = mxCreateDoubleMatrix(1, 1, mxREAL);
+	gradobj_mex = mxCreateDoubleMatrix(nvar, 1, mxREAL);
+	copyCArrayToM_FORCESNLPsolver(obj, mxGetPr(obj_mex), 1);
+	copyCArrayToM_FORCESNLPsolver(jacobj, mxGetPr(gradobj_mex), nvar);
+	plhs[0] = obj_mex;
+	plhs[1] = gradobj_mex;
 
 
     // Free memory

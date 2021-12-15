@@ -33,7 +33,7 @@ jurisdiction in case of any dispute.
 
 typedef FORCESNLPsolver_float solver_float;
 typedef solver_int32_default solver_int;
-#define NSTAGES ( 50 )
+#define NSTAGES ( 10 )
 #define MAX(X, Y)  ((X) < (Y) ? (Y) : (X))
 
 /* For compatibility with Microsoft Visual Studio 2015 */
@@ -87,14 +87,14 @@ FORCESNLPsolver_extfunc pt2function_FORCESNLPsolver = &;
 static void getDims(const solver_int stage, solver_int* nvar, solver_int* neq, solver_int* dimh, 
              solver_int* dimp, solver_int* diml, solver_int* dimu, solver_int* dimhl, solver_int* dimhu)
 {
-    const solver_int nvarArr[NSTAGES] = {6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6}; 
-    const solver_int neqArr[NSTAGES] = {4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0};
-    const solver_int dimhArr[NSTAGES] = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
-    const solver_int dimpArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    const solver_int dimlArr[NSTAGES] = {2, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 4};
-    const solver_int dimuArr[NSTAGES] = {2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4};
-    const solver_int dimhlArr[NSTAGES] = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
-    const solver_int dimhuArr[NSTAGES] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    const solver_int nvarArr[NSTAGES] = {7, 7, 7, 7, 7, 7, 7, 7, 7, 7}; 
+    const solver_int neqArr[NSTAGES] = {5, 5, 5, 5, 5, 5, 5, 5, 5, 5};
+    const solver_int dimhArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    const solver_int dimpArr[NSTAGES] = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
+    const solver_int dimlArr[NSTAGES] = {6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
+    const solver_int dimuArr[NSTAGES] = {6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
+    const solver_int dimhlArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    const solver_int dimhuArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     *nvar = nvarArr[stage];
     *neq = neqArr[stage];
@@ -181,22 +181,29 @@ void mexFunction( solver_int nlhs, mxArray *plhs[], solver_int nrhs, const mxArr
 	mxArray *arr;
     solver_int nvar, neq, dimh, dimp, diml, dimu, dimhl, dimhu, stage, dimmul;
 
+    // Allocate memory 
+    solver_float *z, *p, *y, *l, *obj, *jacobj, *c, *jacc, *h, *jach, *hess;
+
+	mxArray* c_mex;
+	mxArray* jacc_mex;
+
+
     // get data
     assignData(nrhs, prhs, &stage, &nvar, &neq, &dimh, &dimp, &diml, &dimu, &dimhl, &dimhu);
     dimmul = diml+dimu+dimhl+dimhu;
 
     // Allocate memory 
-    solver_float *z = (solver_float *) malloc(sizeof(solver_float)*MAX(nvar,1));
-    solver_float *p = (solver_float *) malloc(sizeof(solver_float)*MAX(dimp,1));
-    solver_float *y = (solver_float *) malloc(sizeof(solver_float)*MAX(neq,1));
-    solver_float *l = (solver_float *) malloc(sizeof(solver_float)*MAX(dimmul,1));
-    solver_float *obj = (solver_float *) malloc(sizeof(solver_float));
-    solver_float *jacobj = (solver_float *) malloc(sizeof(solver_float)*MAX(nvar,1));
-    solver_float *c = (solver_float *) malloc(sizeof(solver_float)*MAX(neq,1));
-    solver_float *jacc = (solver_float *) malloc(sizeof(solver_float)*MAX(neq*nvar,1));
-    solver_float *h = (solver_float *) malloc(sizeof(solver_float)*MAX(dimh,1));
-    solver_float *jach = (solver_float *) malloc(sizeof(solver_float)*MAX(nvar*dimh,1));
-    solver_float *hess = (solver_float *) malloc(sizeof(solver_float)*MAX(nvar*nvar,1));
+    z = (solver_float *) malloc(sizeof(solver_float)*MAX(nvar,1));
+    p = (solver_float *) malloc(sizeof(solver_float)*MAX(dimp,1));
+    y = (solver_float *) malloc(sizeof(solver_float)*MAX(neq,1));
+    l = (solver_float *) malloc(sizeof(solver_float)*MAX(dimmul,1));
+    obj = (solver_float *) malloc(sizeof(solver_float));
+    jacobj = (solver_float *) malloc(sizeof(solver_float)*MAX(nvar,1));
+    c = (solver_float *) malloc(sizeof(solver_float)*MAX(neq,1));
+    jacc = (solver_float *) malloc(sizeof(solver_float)*MAX(neq*nvar,1));
+    h = (solver_float *) malloc(sizeof(solver_float)*MAX(dimh,1));
+    jach = (solver_float *) malloc(sizeof(solver_float)*MAX(nvar*dimh,1));
+    hess = (solver_float *) malloc(sizeof(solver_float)*MAX(nvar*nvar,1));
 
     /* Initialize all inputs */
     arr = prhs[0];
@@ -221,8 +228,8 @@ void mexFunction( solver_int nlhs, mxArray *plhs[], solver_int nrhs, const mxArr
 
     // Evaluate fcns and read output into mex format
 	(z, y, l, p, obj, jacobj, c, jacc, h, jach, hess, stage, 0, 0);
-	mxArray* c_mex = mxCreateDoubleMatrix(neq, 1, mxREAL);
-	mxArray* jacc_mex = mxCreateDoubleMatrix(neq, nvar, mxREAL);
+	c_mex = mxCreateDoubleMatrix(neq, 1, mxREAL);
+	jacc_mex = mxCreateDoubleMatrix(neq, nvar, mxREAL);
 	copyCArrayToM_FORCESNLPsolver(c, mxGetPr(c_mex), neq);
 	copyCArrayToM_FORCESNLPsolver(jacc, mxGetPr(jacc_mex), neq*nvar);
 	plhs[0] = c_mex;

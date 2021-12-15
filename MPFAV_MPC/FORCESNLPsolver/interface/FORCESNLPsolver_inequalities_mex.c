@@ -91,8 +91,8 @@ static void getDims(const solver_int stage, solver_int* nvar, solver_int* neq, s
     const solver_int neqArr[NSTAGES] = {5, 5, 5, 5, 5, 5, 5, 5, 5, 5};
     const solver_int dimhArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     const solver_int dimpArr[NSTAGES] = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
-    const solver_int dimlArr[NSTAGES] = {6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
-    const solver_int dimuArr[NSTAGES] = {6, 6, 6, 6, 6, 6, 6, 6, 6, 6};
+    const solver_int dimlArr[NSTAGES] = {7, 7, 7, 7, 7, 7, 7, 7, 7, 7};
+    const solver_int dimuArr[NSTAGES] = {7, 7, 7, 7, 7, 7, 7, 7, 7, 7};
     const solver_int dimhlArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     const solver_int dimhuArr[NSTAGES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 

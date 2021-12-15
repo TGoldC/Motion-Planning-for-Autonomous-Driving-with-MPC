@@ -38,7 +38,7 @@ if __name__ == '__main__':
     reference_path = Reference_path.reference_path  # (800,2)
     position_init = Reference_path.position_init  # [0, 0,]
 
-    # define the initialization
+# define the initialization
     #               x_pos                y_pos         steering angle   velocity    yaw_angle
     x0 = np.array([position_init[0],   position_init[1],       0,            0,        0])
     #       steering angle of velocity        acceleration_lon

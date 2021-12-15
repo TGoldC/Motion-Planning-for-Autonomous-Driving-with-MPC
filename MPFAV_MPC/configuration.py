@@ -25,7 +25,7 @@ class ReferencePath:
         self.scenario, self.planning_problem_set = CommonRoadFileReader(self.path_scenario + self.id_scenario).open()
         self.planning_problem = list(self.planning_problem_set.planning_problem_dict.values())[0]
         self.position_init, self.reference_path = self._generate_reference_path()
-        self.desired_velocity = self.planning_problem.goal.state_list[0].velocity.end
+        # self.desired_velocity = self.planning_problem.goal.state_list[0].velocity.end
         self.accumulated_distance_in_reference_path = self._accumulated_distance_in_reference_path()
 
     def _generate_reference_path(self):

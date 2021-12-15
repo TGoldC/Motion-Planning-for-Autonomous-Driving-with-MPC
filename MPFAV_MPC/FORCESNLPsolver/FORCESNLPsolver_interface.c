@@ -59,7 +59,7 @@ extern void FORCESNLPsolver_casadi2forces(FORCESNLPsolver_float *x,        /* pr
 	
 
 	/* Allocate working arrays for CasADi */
-	FORCESNLPsolver_float w[51];
+	FORCESNLPsolver_float w[38];
 	
     /* temporary storage for CasADi sparse output */
     FORCESNLPsolver_callback_float this_f;
