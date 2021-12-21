@@ -7,147 +7,15 @@ import matplotlib.patches
 from matplotlib.gridspec import GridSpec
 import casadi
 from dynamics import Vehicle_dynamics
-from configuration import ReferencePath
+from reference_path import ReferencePath
 from vehiclemodels.parameters_vehicle2 import parameters_vehicle2
+from commonroad.common.file_reader import CommonRoadFileReader
 import sys
 sys.path.append("..")
 
 
-def continuous_dynamics(x, u):
-    """Defines dynamics of the car, i.e. equality constraints.
-    parameters:
-    state x = [xPos,yPos,delta,v,psi]
-    input u = [deltaDot,aLong]
-    """
-    # calculate dx/dt
-    p = parameters_vehicle2()
-    l = p.a + p.b
-    return casadi.vertcat(x[3] * casadi.cos(x[4]),
-                          x[3] * casadi.sin(x[4]),
-                          u[0],
-                          u[1],
-                          x[3] / l * casadi.tan(x[2]))
-
-
-def obj(z, current_target):
-    """Least square costs on deviating from the path and on the inputs
-    z = [deltaDot,aLong,xPos,yPos,delta,v,psi]
-    current_target = point on path that is to be headed for
-    """
-    return (200.0 * (z[2] - current_target[0]) ** 2  # costs on deviating on the path in x-direction
-            + 200.0 * (z[3] - current_target[1]) ** 2  # costs on deviating on the path in y-direction
-            + 0.1 * z[0] ** 2  # penalty on input velocity of steering angle
-            + 0.1 * z[1] ** 2)  # penalty on input longitudinal acceleration
-
-
-def objN(z,current_target):
-    """Increased least square costs for last stage on deviating from the path and
-    on the inputs F and phi
-    z = [F,phi,xPos,yPos,v,theta,delta]
-    current_target = point on path that is to be headed for
-    """
-    return (400.0*(z[2]-current_target[0])**2  # costs on deviating on the path in x-direction
-            + 400.0*(z[3]-current_target[1])**2  # costs on deviating on the path in y-direction
-            + 0.2*z[0]**2  # penalty on input velocity of steering angle
-            + 0.2*z[1]**2)  # penalty on input longitudinal acceleration
-
-
-def find_closest_point(points, ref_point):
-    """Find the index of the closest point in points from the current car position
-    points = array of points on path
-    ref_point = current car position
-    """
-    num_points = points.shape[1]    # 这里的points是 2*N 的
-    diff = np.transpose(points) - ref_point
-    diff = np.transpose(diff)
-    squared_diff = np.power(diff, 2)
-    squared_dist = squared_diff[0, :] + squared_diff[1, :]
-    return np.argmin(squared_dist)
-
-
-def extract_next_path_points(path_points, pos, N):  # pos是car当前位置，先找到最近的index，然后返回其之后的N个点
-    """Extract the next N points on the path for the next N stages starting from
-    the current car position pos
-    """
-    idx = find_closest_point(path_points, pos)
-    num_points = path_points.shape[1]  # 有多少个点
-    num_ellipses = np.ceil((idx+N+1)/num_points)  # np.ceil() 向上取整，单一椭圆的话，就是1
-    path_points = np.tile(path_points, (1, int(num_ellipses)))  # np.tile复制 1*int(num_ellipses) 多份，正常是1
-    return path_points[:, idx+1:idx+N+1]  # return the next N points 2*N
-
-
-def generate_pathplanner():
-    """Generates and returns a FORCESPRO solver that calculates a path based on
-    constraints and dynamics while minimizing an objective function
-    """
-    # Model Definition
-    # ----------------
-
-    # Problem dimensions
-    model = forcespro.nlp.SymbolicModel()
-    model.N = 10  # horizon length
-    model.nvar = 7  # number of variables
-    model.neq = 5  # number of equality constraints
-    model.npar = 2  # number of runtime parameters
-
-    # Objective function
-    model.objective = obj
-    model.objectiveN = objN  # increased costs for the last stage
-    # The function must be able to handle symbolic evaluation,
-    # by passing in CasADi symbols. This means certain numpy funcions are not
-    # available.
-
-    # We use an explicit RK4 integrator here to discretize continuous dynamics
-    integrator_stepsize = 0.1
-    model.eq = lambda z: forcespro.nlp.integrate(continuous_dynamics, z[2:7], z[0:2],
-                                                 integrator=forcespro.nlp.integrators.RK4,
-                                                 stepsize=integrator_stepsize)
-    # Indices on LHS of dynamical constraint - for efficiency reasons, make
-    # sure the matrix E has structure [0 I] where I is the identity matrix.
-    model.E = np.concatenate([np.zeros((5, 2)), np.eye(5)], axis=1)
-
-    # Inequality constraints
-    #  upper/lower variable bounds lb <= z <= ub
-    #                     inputs      |  states
-    #                deltaDot aLong    x    y   delta    v    psi
-    model.lb = np.array([-0.4, -11.5, -10, -20, -1.066, 0., -np.pi])     # 1.066 = 61 degree
-    model.ub = np.array([+0.4, +11.5, 100, 60, +1.066, 50.8, np.pi])
-    # z = [deltaDot,aLong,xPos,yPos,delta,v,psi]
-    # Initial condition on vehicle states x
-    model.xinitidx = range(2, 7)  # use this to specify on which variables initial conditions are imposed
-
-    # Solver generation
-    # -----------------
-
-    # Set solver options
-    codeoptions = forcespro.CodeOptions('FORCESNLPsolver')
-    codeoptions.maxit = 200  # Maximum number of iterations
-    codeoptions.printlevel = 0  # Use printlevel = 2 to print progress (but
-    #                             not for timings)
-    codeoptions.optlevel = 0  # 0 no optimization, 1 optimize for size,
-    #                             2 optimize for speed, 3 optimize for size & speed
-    codeoptions.cleanup = False
-    codeoptions.timing = 1
-    codeoptions.nlp.hessian_approximation = 'bfgs'
-    codeoptions.solvemethod = 'SQP_NLP'  # choose the solver method Sequential
-    #                              Quadratic Programming
-    codeoptions.nlp.bfgs_init = 2.5 * np.identity(7)  # np.identity 创建方阵，对角线为1
-    codeoptions.sqp_nlp.maxqps = 1  # maximum number of quadratic problems to be solved
-    codeoptions.sqp_nlp.reg_hessian = 5e-9  # increase this if exitflag=-8
-    # change this to your server or leave uncommented for using the
-    # standard embotech server at https://forces.embotech.com
-    # codeoptions.server = 'https://forces.embotech.com'
-
-    # Creates code for symbolic model formulation given above, then contacts
-    # server to generate new solver
-    solver = model.generate_solver(options=codeoptions)
-
-    return model, solver
-
-
 def createPlot(x, u, start_pred, sim_length, model, path_points, xinit):
     """Creates a plot and adds the initial data provided by the arguments"""
-
     # Create empty plot
     fig = plt.figure()
     plt.clf()  # 用其所有轴清除整个当前图形
@@ -160,11 +28,11 @@ def createPlot(x, u, start_pred, sim_length, model, path_points, xinit):
     plt.title('Position')
     # plt.axis('equal')
     # for scenario 1
-    plt.xlim([-20., 200.])
-    plt.ylim([-3.5, 2.5])
+    # plt.xlim([-20., 200.])
+    # plt.ylim([-3.5, 2.5])
     # for scenario 2
-    # plt.xlim([-10., 60.])
-    # plt.ylim([-20., 60.])
+    plt.xlim([-10., 60.])
+    plt.ylim([-20., 60.])
     plt.xlabel('x-coordinate')
     plt.ylabel('y-coordinate')
     l2, = ax_pos.plot(x[0, 0], x[1, 0], 'b-')
@@ -275,12 +143,33 @@ def updatePlots(x, u, pred_x, pred_u, model, k):
 
 
 def main():
+    # define the scenario and planning problem
+    # # generate reference path for car to follow-----> scenario 1
+    # path_points = ReferencePath(path_scenario="/home/xin/PycharmProjects/MPFAV_MPC/scenarios/",
+    #                             id_scenario="ZAM_Tutorial_Urban-3_2.xml").reference_path.T  # transpose
+    # generate reference path for car to follow-----> scenario 2
+    path_scenario = "/home/xin/PycharmProjects/MPFAV_MPC/scenarios/"
+    id_scenario = "USA_Lanker-2_18_T-1.xml"
+    scenario, planning_problem_set = CommonRoadFileReader(path_scenario + id_scenario).open()
+    planning_problem = list(planning_problem_set.planning_problem_dict.values())[0]
+
+    reference_path_instance = ReferencePath(scenario, planning_problem)
+
+
+    path_points = reference_path_instance.reference_path.T  # transpose
+    init_orientation = reference_path_instance.init_orientation
+    desired_velocity = reference_path_instance.desired_velocity
+
     # generate code for estimator
     model, solver = generate_pathplanner()
 
     # Simulation
     # ----------
-    sim_length = 300  # simulate 8sec
+    reference_path_distance = reference_path_instance.accumulated_distance_in_reference_path[-1]
+    # print(reference_path_instance.accumulated_distance_in_reference_path)
+    desired_time = reference_path_distance / desired_velocity
+    sim_length = int(desired_time/0.1)
+    # sim_length = 300  # simulate 30sec
 
     # Variables for storing simulation data
     x = np.zeros((5, sim_length + 1))  # states
@@ -290,14 +179,7 @@ def main():
     x0i = np.zeros((model.nvar, 1))  # model.nvar = 7 变量个数  shape of x0i = [7, 1]
     x0 = np.transpose(np.tile(x0i, (1, model.N)))  # # horizon length 10,  shape of x0 = [10, 7]
 
-    # # generate reference path for car to follow-----> scenario 1
-    path_points = ReferencePath(path_scenario="/home/xin/PycharmProjects/MPFAV_MPC/scenarios/",
-                                id_scenario="ZAM_Tutorial_Urban-3_2.xml").reference_path.T  # transpose
-    # generate reference path for car to follow-----> scenario 2
-    # path_points = ReferencePath(path_scenario="/home/xin/PycharmProjects/MPFAV_MPC/scenarios/",
-    #                             id_scenario="USA_Lanker-2_18_T-1.xml").reference_path.T  # transpose
-
-    xinit = np.transpose(np.array([path_points[0, 0], path_points[1, 0], 0., 0., np.deg2rad(0)]))  # Set initial states
+    xinit = np.transpose(np.array([path_points[0, 0], path_points[1, 0], 0., 0., init_orientation]))  # Set initial states
     # state x = [xPos,yPos,delta,v,psi]
     x[:, 0] = xinit
 
@@ -312,6 +194,29 @@ def main():
     # Simulation
     for k in range(sim_length):
         print("k=", k)
+
+        # Objective function   因为object function 有变量是随着时间的变化而变化的，所以要写在 main里的for 循环中
+        # model.objective = obj
+        print("current desired distance", desired_velocity*k*0.1)
+        print("desired_index", reference_path_instance.find_nearest_point_in_reference_path(k*0.1))
+        currrent_target = path_points.T[reference_path_instance.find_nearest_point_in_reference_path(k*0.1)+6]
+        model.objective = lambda z, currrent_target=currrent_target: (200.0 * (z[2] - currrent_target[0]) ** 2  # costs on deviating on the path in x-direction
+                                        + 200.0 * (z[3] - currrent_target[1]) ** 2  # costs on deviating on the path in y-direction
+                                        + 0.1 * z[4] ** 2  # penalty on steering angle
+                                        + 200 * (z[5] - desired_velocity) ** 2  # penalty on velocity
+                                        + 0.1 * z[6] ** 2
+                                        + 0.1 * z[0] ** 2  # penalty on input velocity of steering angle
+                                        + 0.1 * z[1] ** 2)  # penalty on input longitudinal acceleration
+        # model.objectiveN = objN  # increased costs for the last stage
+        model.objectiveN = lambda z, currrent_target=currrent_target: (400.0 * (z[2] - currrent_target[0]) ** 2  # costs on deviating on the path in x-direction
+                                      + 400.0 * (z[3] - currrent_target[1]) ** 2  # costs on deviating on the path in y-direction
+                                      + 0.2 * z[4] ** 2  # penalty on steering angle
+                                      + 200 * (z[5] - desired_velocity) ** 2  # penalty on velocity
+                                      + 0.2 * z[6] ** 2
+                                      + 0.2 * z[0] ** 2  # penalty on input velocity of steering angle
+                                      + 0.2 * z[1] ** 2)  # penalty on input longitudinal acceleration
+        # The function must be able to handle symbolic evaluation,
+        # by passing in CasADi symbols. This means certain numpy funcions are not available.
 
         # Set initial condition
         problem["xinit"] = x[:, k]

@@ -18,8 +18,25 @@ class Vehicle_dynamics(object):
         self.lf = p.a 
         self.lr = p.b 
         self.h = p.h_s 
-        self.m = p.m 
+        self.m = p.m
         self.I = p.I_z
+
+    @classmethod
+    def KS_casadi(self, x, u):
+        """Defines dynamics of the car, i.e. equality constraints.
+        parameters:
+        state x = [xPos,yPos,delta,v,psi]
+        input u = [deltaDot,aLong]
+        """
+        # calculate dx/dt
+        p = parameters_vehicle2()
+        l = p.a + p.b
+        return ca.vertcat(x[3] * ca.cos(x[4]),
+                              x[3] * ca.sin(x[4]),
+                              u[0],
+                              u[1],
+                              x[3] / l * ca.tan(x[2]))
+
 
     def KS(self, states, controls, type ='casadi'):
         if type == 'casadi':

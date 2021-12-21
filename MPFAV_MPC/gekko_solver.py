@@ -11,11 +11,11 @@ m = GEKKO() # initialize the model
 
 p = parameters_vehicle2()
 cons = Constraints(p)
-ref_path = ReferencePath("/home/xin/PycharmProjects/Test_commonroad/commonroad-qp-planner/scenarios/",'ZAM_Tutorial_Urban-3_2.xml')
+path_points = ReferencePath("/home/xin/PycharmProjects/Test_commonroad/commonroad-qp-planner/scenarios/",'ZAM_Tutorial_Urban-3_2.xml').reference_path
 
 # Set the constants
-lwb = 2.471  # wheelbase of vehicle 3
-amax = cons.a_max  # maximum acceleration of vehicle 3
+lwb = cons.l  # wheelbase of vehicle 2
+amax = cons.a_max  # maximum acceleration of vehicle 2
 mindelta = cons.steering_angle_min  # minimum steering angle
 maxdelta = cons.steering_angle_max  # maximum steering angle
 mindeltav = cons.v_steering_angle_min  # minimum steering velocity
@@ -43,9 +43,13 @@ dt = 100 # select discretization of the simulation
 m.time = np.linspace(startt, endt, dt) # set the time (from start to endt in dt steps)
 finalt = int(dt*endt/(endt-startt))-1 # compute the discretization step belonging to the goalt
 
+num_path_points = path_points.shape[1]
+num_points_per_time_step = np.floor(num_path_points/dt)
+
+
 # Set initial and final state
-startstate = [0.0, 0.0, 0.0, 0.0, 0.0]
-finalstate = [10.0, 8.0, 0.0, 2.0, 0.0]
+startstate = [path_points[0, 0], path_points[0, 1], 0.0, 0.0, 0.0]
+finalstate = [path_points[-1, 0], path_points[-1, 1], 0.0, 2.0, 0.0]
 #startstate = [1.0, 1.0, -0.2, 1.0, -0.3] # [sx, sy, delta, v, psi]
 #finalstate = [10.0, 8.0, 0.3, 0.0, 2.0] # [sx, sy, delta, v, psi]
 
@@ -84,6 +88,8 @@ m.Equation(m.sqrt(longaa**2+(va*psia.dt())**2) <= amax)
 # Add Objectives
 m.Obj(1*vdeltaa**2) # minimize steering velocity
 m.Obj(1*longaa**2) # minimize longitudinal acceleration
+m.Obj(1*psia**2)
+m.Obj(1*deltaa**2)
 
 # Fix the final values
 #m.fix(sxa, pos = finalt, val=finalstate[0])
