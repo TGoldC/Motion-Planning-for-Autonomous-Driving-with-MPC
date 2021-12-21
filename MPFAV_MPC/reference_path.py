@@ -62,7 +62,6 @@ class ReferencePath:
         resampled_reference_path = self.reference_path[::interval_lenth, :]
         return resampled_reference_path, iter_length, sim_time
 
-
     def get_init_value(self):
 
         if hasattr(self.planning_problem.initial_state, 'acceleration'):

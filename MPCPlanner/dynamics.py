@@ -1,6 +1,5 @@
 import numpy as np 
 import casadi as ca
-from vehiclemodels.parameters_vehicle1 import parameters_vehicle1
 from vehiclemodels.parameters_vehicle2 import parameters_vehicle2
 from vehiclemodels.vehicle_dynamics_ks import vehicle_dynamics_ks
 from vehiclemodels.utils.vehicle_dynamics_ks_cog import vehicle_dynamics_ks_cog
@@ -8,7 +7,7 @@ from vehiclemodels.vehicle_dynamics_st import vehicle_dynamics_st
 from vehiclemodels.vehicle_dynamics_std import vehicle_dynamics_std
 
 class Vehicle_dynamics(object):
-    def __init__(self, p=parameters_vehicle1()):
+    def __init__(self, p=parameters_vehicle2()):
         self.l = p.a + p.b
         self.g = 9.81
         self.mu = p.tire.p_dy1 
@@ -20,6 +19,21 @@ class Vehicle_dynamics(object):
         self.m = p.m 
         self.I = p.I_z
 
+    @classmethod
+    def KS_casadi(self, x, u):
+        """Defines dynamics of the car, i.e. equality constraints.
+        parameters:
+        state x = [xPos,yPos,delta,v,psi]
+        input u = [deltaDot,aLong]
+        """
+        # calculate dx/dt
+        p = parameters_vehicle2()
+        l = p.a + p.b
+        return ca.vertcat(x[3] * ca.cos(x[4]),
+                              x[3] * ca.sin(x[4]),
+                              u[0],
+                              u[1],
+                              x[3] / l * ca.tan(x[2]))
 
     def KS(self, states, controls, type ='casadi'):
         if type == 'casadi':
@@ -27,9 +41,10 @@ class Vehicle_dynamics(object):
             f = ca.vertcat(f, states[3]*ca.sin(states[4]))
             f = ca.vertcat(f, controls[0])
             f = ca.vertcat(f, controls[1])
-            f = ca.vertcat(f, states[3]*ca.tan(states[2])/self.l)
+            f = ca.vertcat(f, (ca.tan(states[2])*states[3])/self.l)
         elif type == 'scipy':
             f = vehicle_dynamics_ks(states, controls, self.p)
+
         return f
 
     def ST(self, x, u, type ='casadi'):

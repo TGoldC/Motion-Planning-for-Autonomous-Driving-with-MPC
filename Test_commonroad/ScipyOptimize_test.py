@@ -55,14 +55,13 @@ def cons(*args):
     p = args[3]
     constraints = []
     for time_step in range(N-1):
-        constraint_temp = {'type': 'eq',
-                           'fun': lambda z: z[((time_step+1) * (num_states + num_inputs)):((time_step+1) * (num_states + num_inputs) + num_states)]
+        constraints.append({'type': 'eq',
+                           'fun': lambda z, time_step = time_step: z[((time_step+1) * (num_states + num_inputs)):((time_step+1) * (num_states + num_inputs) + num_states)]
                                             - z[(time_step * (num_states + num_inputs)):(time_step * (num_states + num_inputs) + num_states)]
                                             - np.array(vehicle_dynamics_ks(z[(time_step * (num_states + num_inputs)):(time_step * (num_states + num_inputs) + num_states)],
-                                                                           z[(time_step * (num_states + num_inputs) + num_states):((time_step + 1) * (num_states + num_inputs))], p)) * delta_t}
+                                                                           z[(time_step * (num_states + num_inputs) + num_states):((time_step + 1) * (num_states + num_inputs))], p)) * delta_t})
         # np.array(vehicle_dynamics_ks(z[0:5], z[5:7], p)) * delta_t}
         # 'fun': lambda z: z[14:19] - z[7:12] - np.array(vehicle_dynamics_ks(z[7:12], z[12:14], p)) * delta_t}
-        constraints.append(constraint_temp)
     return constraints
 
 

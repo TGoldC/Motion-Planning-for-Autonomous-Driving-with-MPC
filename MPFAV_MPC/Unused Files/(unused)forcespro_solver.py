@@ -334,17 +334,17 @@ def main():
         # model.objective = obj
         print("current desired distance", desired_velocity*k*0.1)
         print("desired_index", reference_path_instance.find_nearest_point_in_reference_path(k*0.1))
-        currrent_target = path_points.T[reference_path_instance.find_nearest_point_in_reference_path(k*0.1)+6]
-        model.objective = lambda z, currrent_target=currrent_target: (200.0 * (z[2] - currrent_target[0]) ** 2  # costs on deviating on the path in x-direction
-                                        + 200.0 * (z[3] - currrent_target[1]) ** 2  # costs on deviating on the path in y-direction
+        current_target = path_points.T[reference_path_instance.find_nearest_point_in_reference_path(k*0.1)+6]
+        model.objective = lambda z, current_target=current_target: (200.0 * (z[2] - current_target[0]) ** 2  # costs on deviating on the path in x-direction
+                                        + 200.0 * (z[3] - current_target[1]) ** 2  # costs on deviating on the path in y-direction
                                         + 0.1 * z[4] ** 2  # penalty on steering angle
                                         + 200 * (z[5] - desired_velocity) ** 2  # penalty on velocity
                                         + 0.1 * z[6] ** 2
                                         + 0.1 * z[0] ** 2  # penalty on input velocity of steering angle
                                         + 0.1 * z[1] ** 2)  # penalty on input longitudinal acceleration
         # model.objectiveN = objN  # increased costs for the last stage
-        model.objectiveN = lambda z, currrent_target=currrent_target: (400.0 * (z[2] - currrent_target[0]) ** 2  # costs on deviating on the path in x-direction
-                                      + 400.0 * (z[3] - currrent_target[1]) ** 2  # costs on deviating on the path in y-direction
+        model.objectiveN = lambda z, current_target=current_target: (400.0 * (z[2] - current_target[0]) ** 2  # costs on deviating on the path in x-direction
+                                      + 400.0 * (z[3] - current_target[1]) ** 2  # costs on deviating on the path in y-direction
                                       + 0.2 * z[4] ** 2  # penalty on steering angle
                                       + 200 * (z[5] - desired_velocity) ** 2  # penalty on velocity
                                       + 0.2 * z[6] ** 2

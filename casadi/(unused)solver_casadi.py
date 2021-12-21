@@ -1,15 +1,16 @@
 import casadi as ca
 import numpy as np
 from dynamics import Vehicle_dynamics
-from cost_func import Cost_Func_casadi
+from cost_func import CostFuncCasadi
 from constraints import Constraints
 
-class MPC_car():
+
+class SolverCasadi:
     def __init__(self, state_dim, T=0.1, N=10):
-        #define prediction horizon and sampling time
+        # define prediction horizon and sampling time
         self.Ts = T
         self.horizon = N       
-        #set states variables
+        # set states variables
         sx = ca.SX.sym('sx')
         sy = ca.SX.sym('sy')
         delta = ca.SX.sym('delta')
@@ -17,12 +18,12 @@ class MPC_car():
         Psi = ca.SX.sym('Psi')
         states = ca.vertcat(*[sx, sy, delta, vel, Psi])
         num_states = states.size()[0]
-        #set control variables
+        # set control variables
         u0 = ca.SX.sym('u0')
         u1 = ca.SX.sym('u1')
         controls = ca.vertcat(*[u0, u1])
         num_controls = controls.size()[0]
-        #get euqations from dynamics.py
+        # get euqations from dynamics.py
         d = Vehicle_dynamics()
         rhs = d.KS(states, controls, type = 'casadi')
         self.f = ca.Function('f', [states, controls], [rhs], ['input_state', 'control_input'], ['rhs'])
@@ -30,7 +31,7 @@ class MPC_car():
         U = ca.SX.sym('U', num_controls, self.horizon)
         X = ca.SX.sym('X', num_states, self.horizon+1)
         P = ca.SX.sym('P', num_states+num_states)
-        #X_ref = ca.SX.sym('X_ref', num_states, self.horizon+1)
+        # X_ref = ca.SX.sym('X_ref', num_states, self.horizon+1)
 
         X[:, 0] = P[:5] # initial condition
 
@@ -41,15 +42,15 @@ class MPC_car():
     
         self.ff = ca.Function('ff', [U, P], [X], ['input_U', 'reference_state'], ['horizon_states'])
 
-        cost = Cost_Func_casadi()
+        cost = CostFuncCasadi()
         obj = cost.object_func(X, U, P, N)
 
-        #self.Q = np.array([[5.0, 0.0, 0.0, 0.0, 0.0],[0.0, 5.0, 0.0, 0.0, 0.0],[0.0, 0.0, 100, 0.0, 0.0], [0.0, 0.0, 0.0, 1, 0.0], [0.0, 0.0, 0.0, 0.0, 1]])
-        #self.R = np.array([[1, 0.0], [0.0, 1]])
+        # self.Q = np.array([[5.0, 0.0, 0.0, 0.0, 0.0],[0.0, 5.0, 0.0, 0.0, 0.0],[0.0, 0.0, 100, 0.0, 0.0], [0.0, 0.0, 0.0, 1, 0.0], [0.0, 0.0, 0.0, 0.0, 1]])
+        # self.R = np.array([[1, 0.0], [0.0, 1]])
 #
-        #obj = 0 
+        # obj = 0
         ### cost
-        #for i in range(N):
+        # for i in range(N):
         #    # obj = obj + ca.mtimes([(X[:, i]-P[3:]).T, Q, X[:, i]-P[3:]]) + ca.mtimes([U[:, i].T, R, U[:, i]])
     #
         #    obj = obj + (X[:, i]-P[5:]).T @ self.Q @ (X[:, i]-P[5:]) + U[:, i].T @ self.R @ U[:, i] 
@@ -58,8 +59,8 @@ class MPC_car():
         con = Constraints()
         g = con.equal_constraints(X, self.horizon)
         ## states constrains
-        #g = [] # equal constrains
-        #for i in range(self.horizon+1):
+        # g = [] # equal constrains
+        # for i in range(self.horizon+1):
         #    g.append(X[2, i])
         #    g.append(X[3, i])
     

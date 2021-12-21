@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 from reference_path import ReferencePath
-from solver_casadi import MPC_car
+from solvers import SolverCasadi
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -23,7 +23,7 @@ if __name__ == '__main__':
     num_states = 5
     num_controls = 2
     #get MPC optimizer from optimizer_casadi
-    mpc_obj = MPC_car(state_dim=num_states, T=0.1, N=N)
+    mpc_obj = SolverCasadi(state_dim=num_states, T=0.1, N=N)
 
     #states constraints
     lbg = []

@@ -2,16 +2,14 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import numpy as np
 
-import forcespro
+A = np.arange(40).reshape(2,20)
+print(A)
+idx = 0
+N = 4
+B = np.zeros((2, N))
+for i in range(1, N+1):
+    B[:, i-1] = A[:, idx + 2*i]
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
-
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+print(B)
