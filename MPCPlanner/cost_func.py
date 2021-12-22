@@ -27,6 +27,8 @@ class CostFuncForcespro:
 
     def objective(self, current_target, desired_velocity):
         # z = [deltaDot,aLong,xPos,yPos,delta,v,psi]
+        # The function must be able to handle symbolic evaluation,
+        # by passing in CasADi symbols. This means certain numpy functions are not available.
         return lambda z, _current_target = current_target: (self.weights[2] * (z[2] - _current_target[0]) ** 2  # costs on deviating on the path in x-direction
                                                             + self.weights[3] * (z[3] - _current_target[1]) ** 2  # costs on deviating on the path in y-direction
                                                             + self.weights[4] * z[4] ** 2  # penalty on steering angle

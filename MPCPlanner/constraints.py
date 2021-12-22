@@ -6,7 +6,7 @@ from dynamics import Vehicle_dynamics
 from vehiclemodels.parameters_vehicle2 import parameters_vehicle2
 
 
-class Constraints():
+class Constraints:
     def __init__(self, p=parameters_vehicle2()):
         # steering angles
         self.delta_min = p.steering.min  # -1.066

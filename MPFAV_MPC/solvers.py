@@ -86,6 +86,35 @@ class SolverForcespro:
     def __init__(self):
         pass
 
+    @staticmethod
+    def obj(z, current_target):
+        """Least square costs on deviating from the path and on the inputs
+        z = [deltaDot,aLong,xPos,yPos,delta,v,psi]
+        current_target = point on path that is to be headed for
+        """
+        return (400.0 * (z[2] - current_target[0]) ** 2  # costs on deviating on the path in x-direction
+                + 400.0 * (z[3] - current_target[1]) ** 2  # costs on deviating on the path in y-direction
+                + 200 * z[4] ** 2  # penalty on steering angle
+                + 20 * z[5] ** 2  # penalty on velocity
+                + 0.1 * z[6] ** 2
+                + 0.1 * z[0] ** 2  # penalty on input velocity of steering angle
+                + 0.1 * z[1] ** 2)  # penalty on input longitudinal acceleration
+
+    @staticmethod
+    def objN(z, current_target):
+        """Increased least square costs for last stage on deviating from the path and
+        on the inputs F and phi
+        z = [F,phi,xPos,yPos,v,theta,delta]
+        current_target = point on path that is to be headed for
+        """
+        return (400.0 * (z[2] - current_target[0]) ** 2  # costs on deviating on the path in x-direction
+                + 400.0 * (z[3] - current_target[1]) ** 2  # costs on deviating on the path in y-direction
+                + 100 * z[4] ** 2
+                + 0.2 * z[5] ** 2
+                + 0.2 * z[6] ** 2
+                + 0.2 * z[0] ** 2  # penalty on input velocity of steering angle
+                + 0.2 * z[1] ** 2)  # penalty on input longitudinal acceleration
+
     def generate_pathplanner(self):
         """Generates and returns a FORCESPRO solver that calculates a path based on
         constraints and dynamics while minimizing an objective function
@@ -103,6 +132,9 @@ class SolverForcespro:
         con = Constraints()
         model.eq = con.forcespro_equal_constraint()
         model.lb, model.ub = con.forcespro_inequal_constraint()
+
+        model.objective = self.obj
+        model.objectiveN = self.objN
 
         # Indices on LHS of dynamical constraint - for efficiency reasons, make
         # sure the matrix E has structure [0 I] where I is the identity matrix.
@@ -132,6 +164,7 @@ class SolverForcespro:
 
         return model, solver
 
+    @staticmethod
     def createPlot(x, u, start_pred, sim_length, model, path_points, xinit):
         """Creates a plot and adds the initial data provided by the arguments"""
         # Create empty plot
@@ -172,7 +205,7 @@ class SolverForcespro:
         ax_v = fig.add_subplot(5, 2, 4)
         plt.grid("both")
         plt.title('velocity')
-        plt.ylim([0., 5.])
+        plt.ylim([0., 20])
         plt.xlim([0., sim_length - 1])
         plt.plot([0, sim_length - 1], np.transpose([model.ub[5], model.ub[5]]), 'r:')
         plt.plot([0, sim_length - 1], np.transpose([model.lb[5], model.lb[5]]), 'r:')
@@ -214,8 +247,9 @@ class SolverForcespro:
         # Make plot fullscreen. Comment out if platform dependent errors occur.
         mng = plt.get_current_fig_manager()
 
+    @staticmethod
     def updatePlots(x, u, pred_x, pred_u, model, k):
-        """Deletes old data sets in the current plot and adds the new data sets
+        """ Deletes old data sets in the current plot and adds the new data sets
         given by the arguments x, u and predicted_z to the plot.
         x: matrix consisting of a set of state column vectors
         u: matrix consisting of a set of input column vectors
