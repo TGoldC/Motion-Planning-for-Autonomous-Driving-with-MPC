@@ -117,8 +117,9 @@ if __name__ == '__main__':
     N = 10
     #retrieve reference path from ReferencePath
     path_scenario = "/home/zehua/commonroad/commonroad-route-planner/scenarios/"
-    id_scenario = "USA_Peach-2_1_T-1.xml"
+    id_scenario = "USA_Lanker-2_18_T-1.xml"
     #DEU_Gar-3_2_T-1
+    #USA_Lanker-2_18_T-1 Xin
     #USA_Peach-2_1_T-1
     #ZAM_Tutorial_Urban-3_2.xml
     #ZAM_Zip-1_6_T-1.xml
@@ -193,8 +194,7 @@ if __name__ == '__main__':
         t_ = time.time()
         res = mpc_obj.solver(x0=init_control, p=c_p, lbg=lbg, lbx=lbx, ubg=ubg, ubx=ubx)
         index_t.append(time.time()- t_)
-        u_sol = ca.reshape(res['x'], num_controls, N) 
-        #+ np.random.normal(0,1,20).reshape(num_controls, N) # add a gaussian noise 
+        u_sol = ca.reshape(res['x'], num_controls, N) + np.random.normal(0,0.1,20).reshape(num_controls, N) # add a gaussian noise 20 numbers
         #print(u_sol.shape)
         ff_value = mpc_obj.ff(u_sol, c_p) # [n_states, N+1]
         x_c.append(ff_value)
@@ -203,11 +203,10 @@ if __name__ == '__main__':
         t0, x0, u0 = mpc_obj.shift_movement(t0, x0, u_sol, mpc_obj.f)
         traj.append(x0)
         ref.append(xs)
-        #print(xs)
         mpciter = mpciter + 1
     t_v = np.array(index_t)
     print(t_v.mean())
-    print((time.time() - start_time)/(mpciter))
+    #print((time.time() - start_time)/(mpciter))
     
     #plot reference path and actual path
     traj_s = np.array(traj)
