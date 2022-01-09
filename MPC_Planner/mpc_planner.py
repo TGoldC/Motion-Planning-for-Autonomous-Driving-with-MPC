@@ -1,5 +1,5 @@
 from commonroad_route_planner.route_planner import RoutePlanner
-from optimizer_forcespro import *
+from optimizer import *
 import sys
 sys.path.append("..")
 
@@ -80,7 +80,7 @@ class MPC_Planner(object):
         init_values = MPC_Planner_instance.get_init_values()  # init_position, init_velocity, init_acceleration, init_orientation
         desired_velocity, delta_t = MPC_Planner_instance.get_desired_velocity_and_delta_t()
 
-        # compute orientation fro resampled reference path
+        # compute orientation from resampled reference path
         orientation = compute_orientation_from_polyline(resampled_path_points)
 
         if name_solver == "forcespro" or "Forcespro":
@@ -112,3 +112,7 @@ if __name__ == '__main__':
     planning_problem = list(planning_problem_set.planning_problem_dict.values())[0]
     MPC_Planner_instance = MPC_Planner(scenario, planning_problem)
     MPC_Planner_instance.plan("forcespro")
+    # MPC_Planner_instance.plan("casadi")
+
+
+
