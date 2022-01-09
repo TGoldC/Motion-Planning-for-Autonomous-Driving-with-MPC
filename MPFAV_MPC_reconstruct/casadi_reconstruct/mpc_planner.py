@@ -34,16 +34,18 @@ class MPC_Planner:
             delta_t = self.scenario.dt
 
         return desired_velocity, delta_t
+
     def resample_refence_trajectory(self, reference_path,sum_distance, sim_time):
         step = sum_distance/(sim_time/T-2)
         new_polyline = pycrccosy.Util.resample_polyline(reference_path, step)
         return new_polyline
 
+
 if __name__ == '__main__':
-    #define prediction horizon and sampling time [s]
+    # define prediction horizon and sampling time [s]
     N = 10
     T = 0.1 
-    #retrieve reference path from ReferencePath
+    # retrieve reference path from ReferencePath
     path_scenario = "/home/zehua/commonroad/commonroad-route-planner/scenarios/"
     id_scenario = "USA_Peach-2_1_T-1.xml"
     scenario, planning_problem_set = CommonRoadFileReader(path_scenario + id_scenario).open()
@@ -52,8 +54,7 @@ if __name__ == '__main__':
     reference_path_instance = ReferencePath(scenario, planning_problem)
     desired_velocity = reference_path_instance.desired_velocity
     distance = reference_path_instance._accumulated_distance_in_reference_path()
-    sum_distance = distance[-1]- distance[0]
-
+    sum_distance = distance[-1] - distance[0]
 
     resampled_reference_path, iter_length, sim_time = reference_path_instance.resample_reference_path()
     reference_path = reference_path_instance._generate_reference_path()
@@ -62,44 +63,26 @@ if __name__ == '__main__':
     print(reference_path.shape)
     print(new_polyline.shape)
     print(resampled_reference_path.shape)
-    #print(iter_length)
-    #print(sim_time)
+    # print(iter_length)
+    # print(sim_time)
     init_position, init_acceleration, init_orientation = reference_path_instance.get_init_value()
-    #get[800, 2]points from route planner, take [100, 2] points each 8 s
-    #waypoints = ReferencePath(path_scenario="/home/zehua/commonroad/commonroad-route-planner/scenarios/",
+    # get[800, 2]points from route planner, take [100, 2] points each 8 s
+    # waypoints = ReferencePath(path_scenario="/home/zehua/commonroad/commonroad-route-planner/scenarios/",
     #                            id_scenario="USA_Peach-2_1_T-1.xml").reference_path
-    #ref_path = waypoints[::4, :]
+    # ref_path = waypoints[::4, :]
     # model parameters
     num_states = 5
     num_controls = 2
-    #get MPC optimizer from optimizer_casadi
+    # get MPC optimizer from optimizer_casadi
     mpc_obj = MPC_car(state_dim=num_states, T=0.1, N=N)
     lbg, ubg, lbx, ubx = mpc_obj.inequal_constraints(N)
-    ##states constraints
-    #lbg = []
-    #ubg = []
-    #for _ in range(N+1):
-    #    lbg.append(-0.91)
-    #    lbg.append(-13.9)
-    #    ubg.append(0.91)
-    #    ubg.append(45.8)
-#
-    ##control constraints
-    #lbx = []
-    #ubx = []
-    #for _ in range(N):
-    #    lbx.append(-0.4)
-    #    ubx.append(0.4)
-    #    lbx.append(-np.inf)
-    #    ubx.append(np.inf)
 
-    
     t0 = 0.0
     # initial state
     x0 = np.array([init_position[0], init_position[1], 0.0, init_acceleration, init_orientation]).reshape(-1, 1)
     # initial controls
     u0 = np.array([0.0, 0.0]*N).reshape(-1, 2)
-    #for saving data
+    # for saving data
     xs = 0
     x_c = [] 
     u_c = []
@@ -111,9 +94,9 @@ if __name__ == '__main__':
     mpciter = 0
     start_time = time.time()
     index_t = []
-    #simulation time
+    # simulation time
 
-    #while( mpciter-sim_time/T<0.0 ):
+    # while( mpciter-sim_time/T<0.0 ):
     for i in range(int(sim_time/T)):
         xs = np.array([new_polyline[i, 0], new_polyline[i, 1], 0, desired_velocity, 0]).reshape(-1,1)
         ## set parameter
@@ -138,7 +121,7 @@ if __name__ == '__main__':
     print(t_v.mean())
     print((time.time() - start_time)/(mpciter))
     
-    #plot reference path and actual path
+    # plot reference path and actual path
     traj_s = np.array(traj)
     traj_r = np.array(ref)
     plt.figure()
@@ -161,7 +144,7 @@ if __name__ == '__main__':
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     plt.rcParams['font.size'] = 15
-    #ax = fig.add_axes([0, 0, 1, 1], projection='3d')
+    # ax = fig.add_axes([0, 0, 1, 1], projection='3d')
     data = [helix]
     lines = [ax.plot(data[0][0,0:1], data[0][1,0:1], data[0][2,0:1], '.', c='red', markersize=5)[0]]
 
@@ -176,7 +159,7 @@ if __name__ == '__main__':
     ax.set_zlabel('Z')
 
     ax.set_title('Vertical Trajectory')
-    #print(traj_s[:,0].shape)
+    # print(traj_s[:,0].shape)
     ax.plot(traj_r[:, 0].flatten(), traj_r[:, 1].flatten(), traj_r[:, 2].flatten(), 'b')#x,y,z
     ani = FuncAnimation(fig, update_lines, fargs=(data, lines), interval=10, blit=False)
     plt.show()

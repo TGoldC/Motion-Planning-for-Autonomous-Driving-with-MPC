@@ -18,7 +18,8 @@ def main():
     # reference path from Route Planner
     path_points = MPC_Planner_instance.reference_path.T  # transpose
     # resample the original reference path
-    resampled_path_points, iter_length, sim_time = MPC_Planner_instance.resample_reference_path()
+    resampled_path_points, iter_length = MPC_Planner_instance.resample_reference_path()
+    # resampled_path_points, iter_length, sim_time = MPC_Planner_instance.resample_reference_path()
 
     # get init values and desired velocity
     init_position, init_velocity, init_acceleration, init_orientation = MPC_Planner_instance.get_init_value()
@@ -31,8 +32,8 @@ def main():
     # Simulation
     # ----------
 
-    # sim_length = iter_length  # simulate 30sec
-    sim_length = resampled_path_points.shape[0]  # 167  N*2
+    sim_length = iter_length  # simulate 30sec
+    # sim_length = resampled_path_points.shape[0]  # 167  N*2
 
     # Variables for storing simulation data
     x = np.zeros((5, sim_length + 1))  # states
@@ -58,19 +59,25 @@ def main():
     for k in range(sim_length):
         print("k=", k)
 
-        # Objective function   因为object function 有变量是随着时间的变化而变化的，所以要写在 main里的for 循环中
         # model.objective = obj
         # current_position = resampled_path_points[k, :]
-        # cost_func = CostFuncForcespro()
-        # model.objective = cost_func.objective(current_position, desired_velocity)
-        # model.objectiveN = cost_func.objectiveN(current_position, desired_velocity)
+        # weights = np.array([0.1, 0.1, 200.0, 200.0, 0.1, 200.0, 0.1])
+        # cost_func = CostFuncForcespro(weights, current_position, desired_velocity)
+        # model.objective = cost_func.objective
+        # model.objectiveN = cost_func.objectiveN
+        # Objective function   因为object function 有变量是随着时间的变化而变化的，所以要写在 main里的for 循环中
 
         # Set initial condition
         problem["xinit"] = x[:, k]
 
         # Set runtime parameters (here, the next N points on the path)
-        next_path_points = MPC_Planner_instance.extract_next_path_points(resampled_path_points.T, x[0:2, k], model.N)
+        # next_path_points = MPC_Planner_instance.extract_next_path_points(resampled_path_points.T, x[0:2, k], model.N)
         # 返回离x[0:2, k]最近的点的之后的N个点 不包括本身，shape=2*N
+        next_path_points = resampled_path_points.T[:, k+1:k+1+model.N]
+        while next_path_points.shape[1] != model.N:
+            next_path_points = np.hstack((next_path_points, resampled_path_points[-1].reshape(2, -1)))
+
+        # next_path_points = np.vstack((next_path_points, np.ones(model.N)*desired_velocity))
         problem["all_parameters"] = np.reshape(np.transpose(next_path_points), (2 * model.N, 1))
         # shape = 2N * 1  【x y x y x y...】.T
 
