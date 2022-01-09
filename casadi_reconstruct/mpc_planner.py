@@ -1,23 +1,34 @@
 import os
-
-from numpy.core.fromnumeric import shape
-import casadi as ca
-import numpy as np
 import time
-
+import numpy as np
+import casadi as ca
+#import casadi optimizer
 from optimizer_casadi import MPC_car
-from configuration import ReferencePath
 
+#commonroad-io
+from commonroad.common.file_reader import CommonRoadFileReader
+from commonroad_route_planner.route_planner import RoutePlanner
+from commonroad_route_planner.utility.visualization import visualize_route
+from commonroad.visualization.mp_renderer import MPRenderer
+
+# commonroad-curvilinear-coordinatesystem
+import commonroad_dc.pycrccosy as pycrccosy
+from commonroad_dc.geometry.util import (chaikins_corner_cutting, compute_curvature_from_polyline, resample_polyline,
+                                         compute_pathlength_from_polyline, compute_orientation_from_polyline)
+
+#plot and animation
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from commonroad.common.file_reader import CommonRoadFileReader
-#for resample
-import commonroad_dc.pycrccosy as pycrccosy
+class MPC_Planner():
+    def __init__(self, scenario, planning_problem):
+        self.scenario = scenario
+        self.planning_problem = planning_problem
+        self.reference_path = self._generate_reference_path()
+        self.desired_velocity, self.delta_t = self.get_desired_velocity_and_delta_t()
 
-class MPC_Planner:
     def get_desired_velocity_and_delta_t(self):
-        # goal state configuration    这一部分不应该写在这个class里面。要参考qp planner来写,写在main里面
+        # goal state configuration
         if hasattr(self.planning_problem.goal.state_list[0], 'velocity'):
             if self.planning_problem.goal.state_list[0].velocity.start != 0:
                 desired_velocity = (self.planning_problem.goal.state_list[0].velocity.start
@@ -34,41 +45,102 @@ class MPC_Planner:
             delta_t = self.scenario.dt
 
         return desired_velocity, delta_t
-    def resample_refence_trajectory(self, reference_path,sum_distance, sim_time):
-        step = sum_distance/(sim_time/T-2)
-        new_polyline = pycrccosy.Util.resample_polyline(reference_path, step)
-        return new_polyline
+
+    def get_init_values(self):
+
+        if hasattr(self.planning_problem.initial_state, 'acceleration'):
+            init_acceleration = self.planning_problem.initial_state.acceleration
+        else:
+            init_acceleration = 0.
+
+        if hasattr(self.planning_problem.initial_state, 'orientation'):
+            init_orientation = self.planning_problem.initial_state.orientation
+        else:
+            init_orientation = 0
+
+        if hasattr(self.planning_problem.initial_state, "position"):
+            init_position = self.planning_problem.initial_state.position
+        else:
+            init_position = np.array([0, 0])
+
+        if hasattr(self.planning_problem, "velocity"):
+            init_velocity = self.planning_problem.initial_state.velocity
+        else:
+            init_velocity = 0
+
+        return init_position, init_velocity, init_acceleration, init_orientation
+
+    def _generate_reference_path(self):
+        """
+        position_init: 1D array (x_pos, y_pos); the initial position of the planning problem
+        reference_path: the output of route planner, which is considered as reference path
+        """
+        route_planer = RoutePlanner(self.scenario, self.planning_problem, backend=RoutePlanner.Backend.NETWORKX)
+        candidate_route = route_planer.plan_routes()
+        reference_path = candidate_route.retrieve_best_route_by_orientation().reference_path  # 800*2
+        return reference_path
+    
+    def resample_reference_path(self):
+        #sum_distance = pycrccosy.Util.compute_polyline_length(self.reference_path)
+        #reference_path = np.array(pycrccosy.Util.chaikins_corner_cutting(self.reference_path))
+        step = self.desired_velocity * self.delta_t
+        resampled_reference_path = pycrccosy.Util.resample_polyline(self.reference_path, step)
+        iter_length = resampled_reference_path.shape[0]
+        return resampled_reference_path, iter_length
+
+    def get_init_value(self):
+
+        if hasattr(self.planning_problem.initial_state, 'acceleration'):
+            init_acceleration = self.planning_problem.initial_state.acceleration
+        else:
+            init_acceleration = 0.
+
+        if hasattr(self.planning_problem.initial_state, 'orientation'):
+            init_orientation = self.planning_problem.initial_state.orientation
+        else:
+            init_orientation = 0
+
+        if hasattr(self.planning_problem.initial_state, "position"):
+            init_position = self.planning_problem.initial_state.position
+        else:
+            init_position = np.array([0, 0])
+
+        if hasattr(self.planning_problem, "velocity"):
+            init_velocity = self.planning_problem.initial_state.velocity
+        else:
+            init_velocity = 0
+
+        return init_position, init_velocity, init_acceleration, init_orientation
 
 if __name__ == '__main__':
-    #define prediction horizon and sampling time [s]
+    #define prediction horizon
     N = 10
-    T = 0.1 
     #retrieve reference path from ReferencePath
     path_scenario = "/home/zehua/commonroad/commonroad-route-planner/scenarios/"
-    id_scenario = "USA_Peach-2_1_T-1.xml"
+    id_scenario = "USA_Lanker-2_18_T-1.xml"
+    #DEU_Gar-3_2_T-1
+    #USA_Lanker-2_18_T-1 Xin
+    #USA_Peach-2_1_T-1
+    #ZAM_Tutorial_Urban-3_2.xml
+    #ZAM_Zip-1_6_T-1.xml
     scenario, planning_problem_set = CommonRoadFileReader(path_scenario + id_scenario).open()
     planning_problem = list(planning_problem_set.planning_problem_dict.values())[0]
 
-    reference_path_instance = ReferencePath(scenario, planning_problem)
-    desired_velocity = reference_path_instance.desired_velocity
-    distance = reference_path_instance._accumulated_distance_in_reference_path()
-    sum_distance = distance[-1]- distance[0]
+    reference_path_instance = MPC_Planner(scenario, planning_problem)
+    #get desired velocity [m/s] and sampling time[s]
+    desired_velocity, delta_T = reference_path_instance.get_desired_velocity_and_delta_t()
+    
+    #set sampling time [s]
+    T = delta_T
 
+    resampled_reference_path, iter_length = reference_path_instance.resample_reference_path()
+    reference_path = reference_path_instance.reference_path
+    
+    #compute orientation fro resampled reference path
+    orientation = compute_orientation_from_polyline(resampled_reference_path)
 
-    resampled_reference_path, iter_length, sim_time = reference_path_instance.resample_reference_path()
-    reference_path = reference_path_instance._generate_reference_path()
-    new_polyline = pycrccosy.Util.resample_polyline(reference_path, sum_distance/(sim_time/T-2))
-    print(sim_time)
-    print(reference_path.shape)
-    print(new_polyline.shape)
-    print(resampled_reference_path.shape)
-    #print(iter_length)
-    #print(sim_time)
-    init_position, init_acceleration, init_orientation = reference_path_instance.get_init_value()
-    #get[800, 2]points from route planner, take [100, 2] points each 8 s
-    #waypoints = ReferencePath(path_scenario="/home/zehua/commonroad/commonroad-route-planner/scenarios/",
-    #                            id_scenario="USA_Peach-2_1_T-1.xml").reference_path
-    #ref_path = waypoints[::4, :]
+    init_position, init_velocity, init_acceleration, init_orientation = reference_path_instance.get_init_value()
+  
     # model parameters
     num_states = 5
     num_controls = 2
@@ -95,10 +167,10 @@ if __name__ == '__main__':
 
     
     t0 = 0.0
-    # initial state
-    x0 = np.array([init_position[0], init_position[1], 0.0, init_acceleration, init_orientation]).reshape(-1, 1)
-    # initial controls
-    u0 = np.array([0.0, 0.0]*N).reshape(-1, 2)
+    # set initial state
+    x0 = np.array([init_position[0], init_position[1], 0.0, init_velocity, init_orientation]).reshape(-1, 1)
+    # set initial controls
+    u0 = np.array([0.0, init_acceleration]*N).reshape(-1, 2)
     #for saving data
     xs = 0
     x_c = [] 
@@ -114,16 +186,15 @@ if __name__ == '__main__':
     #simulation time
 
     #while( mpciter-sim_time/T<0.0 ):
-    for i in range(int(sim_time/T)):
-        xs = np.array([new_polyline[i, 0], new_polyline[i, 1], 0, desired_velocity, 0]).reshape(-1,1)
+    for i in range(iter_length):
+        xs = np.array([resampled_reference_path[i, 0], resampled_reference_path[i, 1], 0, desired_velocity, orientation[i]]).reshape(-1,1)
         ## set parameter
         c_p = np.concatenate((x0, xs))
         init_control = ca.reshape(u0, -1, 1)
         t_ = time.time()
         res = mpc_obj.solver(x0=init_control, p=c_p, lbg=lbg, lbx=lbx, ubg=ubg, ubx=ubx)
         index_t.append(time.time()- t_)
-        u_sol = ca.reshape(res['x'], num_controls, N) 
-        #+ np.random.normal(0,1,20).reshape(num_controls, N) # add a gaussian noise 
+        u_sol = ca.reshape(res['x'], num_controls, N) + np.random.normal(0,0.1,20).reshape(num_controls, N) # add a gaussian noise 20 numbers
         #print(u_sol.shape)
         ff_value = mpc_obj.ff(u_sol, c_p) # [n_states, N+1]
         x_c.append(ff_value)
@@ -132,11 +203,10 @@ if __name__ == '__main__':
         t0, x0, u0 = mpc_obj.shift_movement(t0, x0, u_sol, mpc_obj.f)
         traj.append(x0)
         ref.append(xs)
-        #print(xs)
         mpciter = mpciter + 1
     t_v = np.array(index_t)
     print(t_v.mean())
-    print((time.time() - start_time)/(mpciter))
+    #print((time.time() - start_time)/(mpciter))
     
     #plot reference path and actual path
     traj_s = np.array(traj)

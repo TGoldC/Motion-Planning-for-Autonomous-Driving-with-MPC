@@ -4,6 +4,9 @@ from configuration import Vehicle_dynamics
 
 class MPC_car():
     def __init__(self, state_dim, T=0.1, N=10):
+        #acceleration
+        self.amin = -11.5
+        self.amax = 11.5
         #steering angles
         self.delta_min = -1.066
         self.delta_max = 1.066
@@ -83,21 +86,55 @@ class MPC_car():
 
     def object_func(self, states, controls, reference_states, horizon):
         obj = 0 
-        Q = np.array([[5.0, 0.0, 0.0, 0.0, 0.0],[0.0, 5.0, 0.0, 0.0, 0.0],[0.0, 0.0, 100, 0.0, 0.0], [0.0, 0.0, 0.0, 1, 0.0], [0.0, 0.0, 0.0, 0.0, 1]])
-        R = np.array([[1, 0.0], [0.0, 1]])
+        #states penalty
+        Q = np.array([[5.0, 0.0, 0.0, 0.0, 0.0],[0.0, 5.0, 0.0, 0.0, 0.0],[0.0, 0.0, 200, 0.0, 0.0], [0.0, 0.0, 0.0, 1, 0.0], [0.0, 0.0, 0.0, 0.0, 80]])
+        #controls penalty
+        R = np.array([[0.1, 0.0], [0.0, 0.1]])
+        #end term penalty
+        P = np.array([[5.0, 0.0, 0.0, 0.0, 0.0],[0.0, 5.0, 0.0, 0.0, 0.0],[0.0, 0.0, 200, 0.0, 0.0], [0.0, 0.0, 0.0, 1, 0.0], [0.0, 0.0, 0.0, 0.0, 80]])
         ## cost
         for i in range(horizon):
             # obj = obj + ca.mtimes([(X[:, i]-P[3:]).T, Q, X[:, i]-P[3:]]) + ca.mtimes([U[:, i].T, R, U[:, i]])
     
             obj = obj + (states[:, i]-reference_states[5:]).T @ Q @ (states[:, i]-reference_states[5:]) + controls[:, i].T @ R @ controls[:, i] 
-            + (states[:, -1]-reference_states[5:]).T @ Q @ (states[:, -1]-reference_states[5:])
+            + (states[:, -1]-reference_states[5:]).T @ P @ (states[:, -1]-reference_states[5:])
         return obj
 
+    #def test_equal_constraints(self, current_states, reference_states, horizon):
+    #    g = [] # equal constraints
+    #    for i in range(horizon+1):
+    #        g.append(current_states[2, i]) #steering angle
+    #        g.append(current_states[3, i]) #velocity
+    #        g.append(-ca.sin(reference_states[4, i])*(current_states[0, i]-reference_states[0, i])
+    #        + ca.cos(reference_states[4, i])*(current_states[1, i]-reference_states[1, i]))
+    #    return g
+    #
+    #def test_inequal_constraints(self, horizon):
+    #    #states constraints
+    #    lbg = []
+    #    ubg = []
+    #    for _ in range(horizon+1):
+    #        lbg.append(self.delta_min)
+    #        lbg.append(self.v_min)
+    #        lbg.append(-0.5)
+    #        ubg.append(self.delta_max)
+    #        ubg.append(self.v_max)  
+    #        ubg.append(0.5)  
+    #    #control constraints
+    #    lbx = []
+    #    ubx = []
+    #    for _ in range(horizon):
+    #        lbx.append(self.deltav_min) #steering velocity
+    #        ubx.append(self.deltav_max)
+    #        lbx.append(self.amin) 
+    #        ubx.append(self.amax)
+    #    return lbg, ubg, lbx, ubx
+#
     def equal_constraints(self, states, horizon):
         g = [] # equal constraints
         for i in range(horizon+1):
-            g.append(states[2, i])
-            g.append(states[3, i])
+            g.append(states[2, i]) #steering angle
+            g.append(states[3, i]) #velocity
         return g
 
     def inequal_constraints(self, horizon):
@@ -113,8 +150,8 @@ class MPC_car():
         lbx = []
         ubx = []
         for _ in range(horizon):
-            lbx.append(self.deltav_min)
+            lbx.append(self.deltav_min) #steering velocity
             ubx.append(self.deltav_max)
-            lbx.append(-np.inf)
-            ubx.append(np.inf)
+            lbx.append(self.amin) 
+            ubx.append(self.amax)
         return lbg, ubg, lbx, ubx
