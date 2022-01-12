@@ -10,6 +10,7 @@ from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad_dc.geometry.util import (chaikins_corner_cutting, compute_curvature_from_polyline, resample_polyline,
                                          compute_pathlength_from_polyline, compute_orientation_from_polyline, compute_polyline_length)
 from matplotlib.animation import FuncAnimation
+from mpc_planner import MPC_Planner
 import sys
 import time
 
@@ -175,7 +176,7 @@ class ForcesproOptimizer(Optimizer):
         start_pred = np.reshape(problem["x0"], (7, model.N))  # first prediction corresponds to initial guess
 
         # generate plot with initial values
-        self.createPlot(x, u, start_pred, sim_length, model, self.resampled_path_points.T, xinit)  # draw the resampled path, interpolate with same distance between two points
+        # self.createPlot(x, u, start_pred, sim_length, model, self.resampled_path_points.T, xinit)  # draw the resampled path, interpolate with same distance between two points
 
         # Simulation
         for k in range(sim_length):
@@ -215,19 +216,25 @@ class ForcesproOptimizer(Optimizer):
 
             # Apply optimized input u of first stage to system and save simulation data
             u[:, k] = pred_u[:, 0]
+            # add Gaussian noise onto inputs
+            # noise_mean = np.array([0, 0])
+            # noise_std = np.array([0.01, 0.01])  # The larger standard deviation is, the wider range of noise is.
+            # noise = np.random.normal(noise_mean, noise_std, (2,))
+            # u[:, k] = pred_u[:, 0] + noise
             x[:, k + 1] = np.transpose(model.eq(np.concatenate((u[:, k], x[:, k]))))  # with k-th step 's x and u，update states at (k+1)-th
 
             # plot results of current simulation step
-            self.updatePlots(x, u, pred_x, pred_u, model, k)
+            # self.updatePlots(x, u, pred_x, pred_u, model, k)
 
-            if k == sim_length - 1:
-                fig = plt.gcf()
-                ax_list = fig.axes
-                ax_list[0].get_lines().pop(-1).remove()  # remove old prediction of trajectory
-                ax_list[0].legend(['desired trajectory', 'init pos', 'car trajectory'], loc='lower right')
-                plt.show()
-            else:
-                plt.draw()
+            # if k == sim_length - 1:
+            #     fig = plt.gcf()
+            #     ax_list = fig.axes
+            #     ax_list[0].get_lines().pop(-1).remove()  # remove old prediction of trajectory
+            #     ax_list[0].legend(['desired trajectory', 'init pos', 'car trajectory'], loc='lower right')
+            #     plt.show()
+            # else:
+            #     plt.draw()
+        return x
 
     @staticmethod
     def createPlot(x, u, start_pred, sim_length, model, path_points, xinit):
