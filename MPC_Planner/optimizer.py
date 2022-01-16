@@ -2,7 +2,7 @@ import casadi as ca
 import numpy as np
 import forcespro
 import forcespro.nlp
-from configuration import Vehicle_dynamics
+from configuration import VehicleDynamics
 from vehiclemodels.parameters_vehicle2 import parameters_vehicle2
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -10,7 +10,6 @@ from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad_dc.geometry.util import (chaikins_corner_cutting, compute_curvature_from_polyline, resample_polyline,
                                          compute_pathlength_from_polyline, compute_orientation_from_polyline, compute_polyline_length)
 from matplotlib.animation import FuncAnimation
-from mpc_planner import MPC_Planner
 import sys
 import time
 

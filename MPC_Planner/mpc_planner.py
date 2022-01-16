@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 from commonroad_route_planner.route_planner import RoutePlanner
 from commonroad.scenario.trajectory import State, Trajectory
 from commonroad.prediction.prediction import TrajectoryPrediction
@@ -13,7 +12,7 @@ import sys
 sys.path.append("..")
 
 
-class MPC_Planner(object):
+class MPCPlanner(object):
     def __init__(self, scenario, planning_problem):
         self.scenario = scenario
         self.planning_problem = planning_problem
@@ -186,7 +185,7 @@ if __name__ == '__main__':
     id_scenario = "USA_Lanker-2_18_T-1.xml"  # "ZAM_Tutorial_Urban-3_2.xml"
     scenario, planning_problem_set = CommonRoadFileReader(path_scenario + id_scenario).open()
     planning_problem = list(planning_problem_set.planning_problem_dict.values())[0]
-    MPC_Planner_instance = MPC_Planner(scenario, planning_problem)
+    MPC_Planner_instance = MPCPlanner(scenario, planning_problem)
     MPC_Planner_instance.plan("forcespro")
     # MPC_Planner_instance.plan("casadi")
     # TODO introduce Collision Avoidance feature
