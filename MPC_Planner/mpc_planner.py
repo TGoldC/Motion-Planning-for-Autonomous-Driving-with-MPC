@@ -79,7 +79,7 @@ class MPC_Planner(object):
         iter_length = resampled_reference_path.shape[0]
         return resampled_reference_path, iter_length
 
-    def plot(self, iter_length, x):
+    def plot_and_create_gif(self, iter_length, x):
         dynamic_obstacle_initial_state = State(position=np.array([self.init_values[0][0], self.init_values[0][1]]),
                                                velocity=self.init_values[2],
                                                orientation=self.init_values[3],
@@ -121,14 +121,14 @@ class MPC_Planner(object):
             self.scenario.draw(rnd, draw_params={'time_begin': i})
             self.planning_problem.draw(rnd)
             rnd.render()
-            plt.savefig("figures/temp{}.png".format(i))
+            plt.savefig("../figures/temp{}.png".format(i))
             # plt.show()
             plt.clf()
 
         figures_list = []
         for i in range(0, iter_length):
-            figures_list.append("figures/temp{}.png".format(i))
-        with imageio.get_writer('mygif.gif', mode='I') as writer:
+            figures_list.append("../figures/temp{}.png".format(i))
+        with imageio.get_writer('../mygif.gif', mode='I') as writer:
             for filename in figures_list:
                 image = imageio.imread(filename)
                 writer.append_data(image)
@@ -164,18 +164,19 @@ class MPC_Planner(object):
                                         desired_velocity=desired_velocity,
                                         orientation=orientation)
         final_states = optimizer.optimize()
-        # self.plot(iter_length, final_states)
+        self.plot_and_create_gif(iter_length, final_states)
 
 
 if __name__ == '__main__':
     # define the scenario and planning problem
-    path_scenario = "scenarios/"  # relative dir path, scenarios and mpc_planner.py are in the same directory
+    path_scenario = "../scenarios/"  # relative dir path, scenarios and mpc_planner.py are in the same directory
     id_scenario = "USA_Lanker-2_18_T-1.xml"  # "ZAM_Tutorial_Urban-3_2.xml"
     scenario, planning_problem_set = CommonRoadFileReader(path_scenario + id_scenario).open()
     planning_problem = list(planning_problem_set.planning_problem_dict.values())[0]
     MPC_Planner_instance = MPC_Planner(scenario, planning_problem)
     MPC_Planner_instance.plan("forcespro")
     # MPC_Planner_instance.plan("casadi")
+    # TODO introduce Collision Avoidance feature
 
 
 
