@@ -5,6 +5,8 @@ from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.geometry.shape import Rectangle
 from commonroad.scenario.obstacle import ObstacleType, DynamicObstacle
 from commonroad.visualization.mp_renderer import MPRenderer
+import commonroad_dc.feasibility.feasibility_checker as feasibility_checker
+from commonroad_dc.feasibility.vehicle_dynamics import VehicleDynamics, VehicleType
 from optimizer import *
 import imageio
 import sys
@@ -132,6 +134,17 @@ class MPC_Planner(object):
             for filename in figures_list:
                 image = imageio.imread(filename)
                 writer.append_data(image)
+
+    def check_feasibility(self, ego_vehicle_trajectory):
+        # set time step as scenario time step
+        dt = self.scenario.dt
+
+        # choose vehicle model (here kinematic single-track model)
+        vehicle_dynamics = VehicleDynamics.KS(VehicleType.BMW_320i)
+
+        # check feasibility of planned trajectory for the given vehicle model
+        feasible, reconstructed_inputs = feasibility_checker.trajectory_feasibility(ego_vehicle_trajectory, vehicle_dynamics, dt)
+        print('The planned trajectory is feasible: %s' % feasible)
 
     def plan(self, name_solver):
         assert name_solver == "casadi" or "forcespro" or "Casadi" or "Forcespro", 'Cannot find settings for planning problem {}'.format(name_solver)
