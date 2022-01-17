@@ -8,23 +8,9 @@ general_planning_settings:
 
 
 vehicle_settings:
-    100:  # planning problem ID from CommonRoad scenario file
+    21007:  # planning problem ID from CommonRoad scenario file
         reference_point: rear           # reference point of vehicle
-        min_speed_x: 0.0                # v_x constraint (see Eq. 6b in Manzinger, 2020)
-        max_speed_x: 22.0
-        min_speed_y: -4.0               # v_y constraint (see Eq. 6b in Manzinger, 2020)
-        max_speed_y: 4.0
-        a_max_x: 3.5                    # a_x constraint (see Eq. 6b in Manzinger, 2020)
-        a_min_x: -6.0
-        a_max_y: 4.0                    # a_y constraint (see Eq. 6b in Manzinger, 2020)
-        a_min_y: -4.0
-        a_max: 9.81
-        j_min_x: -10.0                  # jerk constraint (for planning)
-        j_max_x: 10.0
-        j_min_y: -10.0
-        j_max_y: 10.0
-        length: 4.508                   # vehicle length
-        width: 1.610                    # vehicle width
+        vehicle_model: parameters_vehicle2  # use the parameter of vehicle 2
         wheelbase: 2.578
         desired_speed: 30.0             # target speed (for planning)
         resampling_reference_path: 1.5  # resampling for curvilinear CoSy

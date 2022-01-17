@@ -61,7 +61,7 @@ class ForcesproOptimizer(Optimizer):
     def equal_constraints():
         # We use an explicit RK4 integrator here to discretize continuous dynamics
         integrator_stepsize = 0.1
-        return lambda z: forcespro.nlp.integrate(Vehicle_dynamics.KS_casadi, z[2:7], z[0:2],
+        return lambda z: forcespro.nlp.integrate(VehicleDynamics.KS_casadi, z[2:7], z[0:2],
                                                  integrator=forcespro.nlp.integrators.RK4,
                                                  stepsize=integrator_stepsize)
 
