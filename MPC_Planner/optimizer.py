@@ -372,16 +372,21 @@ class CasadiOptimizer(Optimizer):
 
     def equal_constraints(self, states):
         g = []  # equal constraints
-        for i in range(self.predict_horizon + 1):
+        for i in range(self.predict_horizon): #or N+1
             g.append(states[2, i])
             g.append(states[3, i])
+        obs_x = 0
+        obs_y = 0
+        obs_diam = 1
+        #for i in range(self.predict_horizon):
+        #    g.append(ca.sqrt((states[0, i]-obs_x)**2+(states[1, i]-obs_y)**2)) # should be smaller als 0.0
         return g
 
     def inequal_constraints(self):
         # states constraints
         lbg = []
         ubg = []
-        for _ in range(self.predict_horizon + 1):
+        for _ in range(self.predict_horizon): #or N+1
             lbg.append(self.delta_min)
             lbg.append(self.v_min)
             ubg.append(self.delta_max)
@@ -394,17 +399,33 @@ class CasadiOptimizer(Optimizer):
             ubx.append(self.deltav_max)
             lbx.append(-np.inf)
             ubx.append(np.inf)
+        #for _ in range(self.predict_horizon):
+        #    lbg.append(0.3)
+        #    ubg.append(np.inf)
         return lbg, ubg, lbx, ubx
 
     def cost_function(self, states, controls, reference_states):
         obj = 0
-        Q = np.array([[5.0, 0.0, 0.0, 0.0, 0.0], [0.0, 5.0, 0.0, 0.0, 0.0], [0.0, 0.0, 100, 0.0, 0.0], [0.0, 0.0, 0.0, 1, 0.0], [0.0, 0.0, 0.0, 0.0, 1]])
-        R = np.array([[1, 0.0], [0.0, 1]])
+        #Q = np.array([[5.0, 0.0, 0.0, 0.0, 0.0], [0.0, 5.0, 0.0, 0.0, 0.0], [0.0, 0.0, 100, 0.0, 0.0], [0.0, 0.0, 0.0, 1, 0.0], [0.0, 0.0, 0.0, 0.0, 1]])
+        #100 start curve 90 auch 85 auch 83 not good 82.5 not good
+        #80 passt 82 passt 10 steer angl
+        #steer angle 0.1 no 1 no 5 no 5 no 50ok
+        #orientation 50 not good
+        #penalty in proporsion 
+        Q = np.array([[82, 0.0, 0.0, 0.0, 0.0], [0.0, 82, 0.0, 0.0, 0.0], [0.0, 0.0, 100.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.01, 0.0], [0.0, 0.0, 0.0, 0.0, 500]])
+        R = np.array([[1.0, 0.0], [0.0, 1.0]])
+        P = np.diag([82.21, 82.21, 100.95, 0.01, 110.04]) #P no works here
+        #P[0, 2] = 6.45
+        #P[2, 0] = 6.45
+        #P[1, 3] = 6.45
+        #P[3, 1] = 6.45
+        #P[2, 4] = 10.95
+        #P[4, 2] = 10.95
         # cost
         for i in range(self.predict_horizon):
             # obj = obj + ca.mtimes([(X[:, i]-P[3:]).T, Q, X[:, i]-P[3:]]) + ca.mtimes([U[:, i].T, R, U[:, i]])
             obj = obj + (states[:, i] - reference_states[5:]).T @ Q @ (states[:, i] - reference_states[5:]) + controls[:, i].T @ R @ controls[:, i]
-            + (states[:, -1] - reference_states[5:]).T @ Q @ (states[:, -1] - reference_states[5:])
+            + (states[:, -1] - reference_states[5:]).T @ P @ (states[:, -1] - reference_states[5:])
         return obj
 
     def solver(self):
@@ -465,7 +486,8 @@ class CasadiOptimizer(Optimizer):
 
         t0 = 0.0
         # initial state
-        x0 = np.array([self.init_position[0], self.init_position[1], 0.0, self.init_velocity, self.init_orientation]).reshape(-1, 1)
+        #x0 = np.array([self.init_position[0], self.init_position[1], 0.0, self.init_velocity, self.init_orientation]).reshape(-1, 1)
+        x0 = np.array([self.resampled_path_points[0,0], self.resampled_path_points[0, 1], 0.0, self.init_velocity, self.init_orientation]).reshape(-1, 1)
         # initial controls
         u0 = np.array([0.0, 0.0] * self.predict_horizon).reshape(-1, 2)
         # for saving data
@@ -484,7 +506,7 @@ class CasadiOptimizer(Optimizer):
 
         # while( mpciter-sim_time/T<0.0 ):
         for i in range(self.iter_length):
-            xs = np.array([self.resampled_path_points[i, 0], self.resampled_path_points[i, 1], 0, self.desired_velocity, 0]).reshape(-1, 1)
+            xs = np.array([self.resampled_path_points[i, 0], self.resampled_path_points[i, 1], 0, self.desired_velocity, self.orientation[i]]).reshape(-1, 1)
             # set parameter
             c_p = np.concatenate((x0, xs))
             init_control = ca.reshape(u0, -1, 1)
@@ -492,8 +514,7 @@ class CasadiOptimizer(Optimizer):
             sol, f, ff = self.solver()
             res = sol(x0=init_control, p=c_p, lbg=lbg, lbx=lbx, ubg=ubg, ubx=ubx)
             index_t.append(time.time() - t_)
-            u_sol = ca.reshape(res['x'], num_controls, self.predict_horizon)
-            # + np.random.normal(0,1,20).reshape(num_controls, N) # add a gaussian noise
+            u_sol = ca.reshape(res['x'], num_controls, self.predict_horizon) + np.random.normal(0,0.1,20).reshape(num_controls, self.predict_horizon) # add a gaussian noise
             # print(u_sol.shape)
             ff_value = ff(u_sol, c_p)  # [n_states, N+1]
             x_c.append(ff_value)
@@ -553,7 +574,7 @@ class CasadiOptimizer(Optimizer):
         #ax.plot(traj_r[:, 0].flatten(), traj_r[:, 1].flatten(), traj_r[:, 2].flatten(), 'b')  # x,y,z
         #ani = FuncAnimation(fig, update_lines, fargs=(data, lines), interval=10, blit=False)
         #plt.show()
-        
+
         return traj_s
 
     def shift_movement(self, t0, x0, u, f):

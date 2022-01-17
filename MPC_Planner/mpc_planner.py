@@ -5,6 +5,10 @@ from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.geometry.shape import Rectangle
 from commonroad.scenario.obstacle import ObstacleType, DynamicObstacle
 from commonroad.visualization.mp_renderer import MPRenderer
+from commonroad_dc.boundary.boundary import create_road_boundary_obstacle
+from commonroad_dc.collision.collision_detection.pycrcc_collision_dispatch import create_collision_checker, create_collision_object
+import commonroad_dc.feasibility.feasibility_checker as feasibility_checker
+from commonroad_dc.feasibility.vehicle_dynamics import VehicleDynamics, VehicleType
 from optimizer import *
 import imageio
 import sys
@@ -19,6 +23,7 @@ class MPC_Planner(object):
         self.desired_velocity, self.delta_t = self.get_desired_velocity_and_delta_t()
         self.init_values = self.get_init_values()
         self.resampled_reference_path, self.iter_length = self.resample_reference_path()
+        self.orientation = compute_orientation_from_polyline(self.resampled_reference_path)
 
     def get_desired_velocity_and_delta_t(self):
         # goal state configuration
@@ -60,7 +65,7 @@ class MPC_Planner(object):
             init_velocity = self.planning_problem.initial_state.velocity
         else:
             init_velocity = 0
-
+       
         return init_position, init_velocity, init_acceleration, init_orientation
 
     def _generate_reference_path(self):
@@ -112,29 +117,95 @@ class MPC_Planner(object):
                                            ego_vehicle_initial_state,
                                            ego_vehicle_prediction)
 
-        # plot the scenario for each time step
-        for i in range(0, 30):
-            plt.figure(figsize=(25, 10))
-            rnd = MPRenderer()
-            self.scenario.draw(rnd, draw_params={'time_begin': i})
-            ego_vehicle.draw(rnd, draw_params={'time_begin': i, 'dynamic_obstacle': {
-                        'vehicle_shape': {'occupancy': {'shape': {'rectangle': {
-                            'facecolor': 'r'}}}}}})
-            self.planning_problem.draw(rnd)
-            rnd.render()
-            rnd.ax.plot(self.resampled_reference_path[:, 0], self.resampled_reference_path[:, 1], color='r', marker='_', markersize=1, zorder=19, linewidth=0.8,
-                        label='reference path')
-            plt.savefig("../figures/test_temp{}.png".format(i))
-            plt.clf()
+        ## plot the scenario for each time step
+        #for i in range(0, 30):
+        #    plt.figure(figsize=(25, 10))
+        #    rnd = MPRenderer()
+        #    self.scenario.draw(rnd, draw_params={'time_begin': i})
+        #    ego_vehicle.draw(rnd, draw_params={'time_begin': i, 'dynamic_obstacle': {
+        #                'vehicle_shape': {'occupancy': {'shape': {'rectangle': {
+        #                    'facecolor': 'r'}}}}}})
+        #    self.planning_problem.draw(rnd)
+        #    rnd.render()
+        #    rnd.ax.plot(self.resampled_reference_path[:, 0], self.resampled_reference_path[:, 1], color='r', marker='_', markersize=1, zorder=19, linewidth=0.8,
+        #                label='reference path')
+        #    plt.savefig("../figures/test_temp{}.png".format(i))
+        #    plt.clf()
+#
+        #figures_list = []
+        #for i in range(0, 30):
+        #    figures_list.append("../figures/test_temp{}.png".format(i))
+        #with imageio.get_writer('test.gif', mode='I') as writer:
+        #    for filename in figures_list:
+        #        image = imageio.imread(filename)
+        #        writer.append_data(image)
 
-        figures_list = []
-        for i in range(0, 30):
-            figures_list.append("../figures/test_temp{}.png".format(i))
-        with imageio.get_writer('test.gif', mode='I') as writer:
-            for filename in figures_list:
-                image = imageio.imread(filename)
-                writer.append_data(image)
+        #2D plot 
+        #plt.figure('Draw')
+        #deviation = self.resampled_reference_path[:, 0]- x[:,0]
+        ##print(self.resampled_reference_path)
+        #plt.plot(np.arange(self.iter_length), deviation)
+        #plt.title('deviation of x')
+        #plt.xlabel('iter')
+        #plt.ylabel('x')
+        #plt.show()
+        #
+        #plt.figure('Draw')
+        #deviation = self.resampled_reference_path[:, 1]- x[:,1]
+        #plt.plot(np.arange(self.iter_length), deviation)
+        #plt.title('deviation of y')
+        #plt.xlabel('iter')
+        #plt.ylabel('y')
+        #plt.show()
+#
+        #plt.figure('Draw')
+        #plt.plot(np.arange(self.iter_length), x[:,2])
+        #plt.title('steering angle')
+        #plt.xlabel('iter')
+        #plt.ylabel('steering angle')
+        #plt.show()
+#
+        #plt.figure('Draw')
+        #plt.plot(np.arange(self.iter_length), x[:,3])
+        #plt.title('Velocity')
+        #plt.xlabel('iter')
+        #plt.ylabel('velocity')
+        #plt.show()
+#
+        #plt.figure('Draw')
+        #plt.plot(np.arange(self.iter_length), self.orientation- x[:,4])
+        #plt.title('deviation of Orientation')
+        #plt.xlabel('iter')
+        #plt.ylabel('orientation')
+        #plt.show()
+        # create collision checker from scenario
+        cc = create_collision_checker(self.scenario)
+        
+        # create ego vehicle collision object
+        ego_vehicle_co = create_collision_object(ego_vehicle)
+        # create the road boundary
+        _, road_boundary = create_road_boundary_obstacle(self.scenario)
+        
+        # add road boundary to collision checker
+        cc.add_collision_object(road_boundary)
+        
+        # Again: check if ego vehicle collides
+        res = cc.collide(ego_vehicle_co)
+        print('Collision between the ego vehicle and the road boundary: %s' % res)
 
+        ## set time step as scenario time step
+        #dt = self.scenario.dt
+        #
+        ## choose vehicle model (here kinematic single-track model)
+        #vehicle_dynamics = VehicleDynamics.KS(VehicleType.BMW_320i)
+        #
+        ## check feasibility of planned trajectory for the given vehicle model
+        #feasible, reconstructed_inputs = feasibility_checker.trajectory_feasibility(ego_vehicle_trajectory, vehicle_dynamics, dt)
+        #print('The planned trajectory is feasible: %s' % feasible)
+
+
+
+ 
     def plan(self, name_solver):
         assert name_solver == "casadi" or "forcespro" or "Casadi" or "Forcespro", 'Cannot find settings for planning problem {}'.format(name_solver)
         # resample the original reference path
@@ -166,6 +237,7 @@ class MPC_Planner(object):
                                            desired_velocity=desired_velocity,
                                            orientation=orientation)
         final_states = optimizer.optimize()
+        print(orientation)
         self.plot_and_create_gif(final_states)
 
 
