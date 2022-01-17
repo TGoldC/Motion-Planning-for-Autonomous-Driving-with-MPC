@@ -18,6 +18,7 @@ class MPC_Planner(object):
         self.origin_reference_path = self._generate_reference_path()
         self.desired_velocity, self.delta_t = self.get_desired_velocity_and_delta_t()
         self.init_values = self.get_init_values()
+        self.resampled_reference_path, self.iter_length = self.resample_reference_path()
 
     def get_desired_velocity_and_delta_t(self):
         # goal state configuration
@@ -79,56 +80,57 @@ class MPC_Planner(object):
         iter_length = resampled_reference_path.shape[0]
         return resampled_reference_path, iter_length
 
-    def plot_and_create_gif(self, iter_length, x):
-        dynamic_obstacle_initial_state = State(position=np.array([self.init_values[0][0], self.init_values[0][1]]),
+    def plot_and_create_gif(self, x):
+        ego_vehicle_initial_state = State(position=np.array([self.init_values[0][0], self.init_values[0][1]]),
                                                velocity=self.init_values[2],
                                                orientation=self.init_values[3],
                                                time_step=0)
         # generate the states for the obstacle for time steps 1 to 40 by assuming constant velocity
         state_list = []
 
-        for i in range(1, iter_length):
+        for i in range(1, self.iter_length):
             # compute new position
-            new_position = np.array([x[0, i], x[1, i]])
+            new_position = np.array([x[i, 0], x[i, 1]])
             # create new state
-            new_state = State(position=new_position, velocity=x[3, i], orientation=x[4, i], time_step=i)
+            new_state = State(position=new_position, velocity=x[i, 3], orientation=x[i, 4], time_step=i)
             # add new state to state_list
             state_list.append(new_state)
 
         # create the trajectory of the obstacle, starting at time step 1
-        dynamic_obstacle_trajectory = Trajectory(1, state_list)
+        ego_vehicle_trajectory = Trajectory(1, state_list)
 
         # create the prediction using the trajectory and the shape of the obstacle
-        dynamic_obstacle_shape = Rectangle(width=1.8, length=4.3)
-        dynamic_obstacle_prediction = TrajectoryPrediction(dynamic_obstacle_trajectory, dynamic_obstacle_shape)
+        ego_vehicle_shape = Rectangle(width=1.8, length=4.3)
+        ego_vehicle_prediction = TrajectoryPrediction(ego_vehicle_trajectory, ego_vehicle_shape)
 
         # generate the dynamic obstacle according to the specification
-        dynamic_obstacle_id = self.scenario.generate_object_id()
-        dynamic_obstacle_type = ObstacleType.CAR
-        dynamic_obstacle = DynamicObstacle(dynamic_obstacle_id,
-                                           dynamic_obstacle_type,
-                                           dynamic_obstacle_shape,
-                                           dynamic_obstacle_initial_state,
-                                           dynamic_obstacle_prediction)
-
-        # add dynamic obstacle to the scenario
-        self.scenario.add_objects(dynamic_obstacle)
+        ego_vehicle_id = self.scenario.generate_object_id()
+        ego_vehicle_type = ObstacleType.CAR
+        ego_vehicle = DynamicObstacle(ego_vehicle_id,
+                                           ego_vehicle_type,
+                                           ego_vehicle_shape,
+                                           ego_vehicle_initial_state,
+                                           ego_vehicle_prediction)
 
         # plot the scenario for each time step
-        for i in range(0, iter_length):
+        for i in range(0, 30):
             plt.figure(figsize=(25, 10))
             rnd = MPRenderer()
             self.scenario.draw(rnd, draw_params={'time_begin': i})
+            ego_vehicle.draw(rnd, draw_params={'time_begin': i, 'dynamic_obstacle': {
+                        'vehicle_shape': {'occupancy': {'shape': {'rectangle': {
+                            'facecolor': 'r'}}}}}})
             self.planning_problem.draw(rnd)
             rnd.render()
-            plt.savefig("../figures/temp{}.png".format(i))
-            # plt.show()
+            rnd.ax.plot(self.resampled_reference_path[:, 0], self.resampled_reference_path[:, 1], color='r', marker='_', markersize=1, zorder=19, linewidth=0.8,
+                        label='reference path')
+            plt.savefig("../figures/test_temp{}.png".format(i))
             plt.clf()
 
         figures_list = []
-        for i in range(0, iter_length):
-            figures_list.append("../figures/temp{}.png".format(i))
-        with imageio.get_writer('../mygif.gif', mode='I') as writer:
+        for i in range(0, 30):
+            figures_list.append("../figures/test_temp{}.png".format(i))
+        with imageio.get_writer('test.gif', mode='I') as writer:
             for filename in figures_list:
                 image = imageio.imread(filename)
                 writer.append_data(image)
@@ -146,15 +148,6 @@ class MPC_Planner(object):
         orientation = compute_orientation_from_polyline(resampled_path_points)
 
         if name_solver == "forcespro" or "Forcespro":
-            optimizer = ForcesproOptimizer(p=parameters_vehicle2(),
-                                           predict_horizon=10,
-                                           resampled_path_points=resampled_path_points,
-                                           iter_length=iter_length,
-                                           init_values=init_values,
-                                           delta_t=delta_t,
-                                           desired_velocity=desired_velocity,
-                                           orientation=orientation)
-        else:
             optimizer = CasadiOptimizer(p=parameters_vehicle2(),
                                         predict_horizon=10,
                                         resampled_path_points=resampled_path_points,
@@ -163,8 +156,17 @@ class MPC_Planner(object):
                                         delta_t=delta_t,
                                         desired_velocity=desired_velocity,
                                         orientation=orientation)
+        else:
+            optimizer = ForcesproOptimizer(p=parameters_vehicle2(),
+                                           predict_horizon=10,
+                                           resampled_path_points=resampled_path_points,
+                                           iter_length=iter_length,
+                                           init_values=init_values,
+                                           delta_t=delta_t,
+                                           desired_velocity=desired_velocity,
+                                           orientation=orientation)
         final_states = optimizer.optimize()
-        self.plot_and_create_gif(iter_length, final_states)
+        self.plot_and_create_gif(final_states)
 
 
 if __name__ == '__main__':
@@ -174,8 +176,8 @@ if __name__ == '__main__':
     scenario, planning_problem_set = CommonRoadFileReader(path_scenario + id_scenario).open()
     planning_problem = list(planning_problem_set.planning_problem_dict.values())[0]
     MPC_Planner_instance = MPC_Planner(scenario, planning_problem)
-    MPC_Planner_instance.plan("forcespro")
-    # MPC_Planner_instance.plan("casadi")
+    #MPC_Planner_instance.plan("forcespro")
+    MPC_Planner_instance.plan("casadi")
     # TODO introduce Collision Avoidance feature
 
 

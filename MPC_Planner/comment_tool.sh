@@ -11,7 +11,7 @@ if [ $num2 -ge $num1 -a $num4 -ge $num3 ] >/dev/null 2>&1;then
 else
         echo -e "\e[TypeError: integer argument expected \e[0m";exit
 fi
-file=/home/zehua/commonroad/mpfav-ws21-mpc-planner/MPC_Planner/optimizer.py
+file=optimizer.py
 if [ "$num1" ] && [ "$num2" ];then
         sed -i "${num1},${num2}s/^/#/" $file
  	sed -i "${num3},${num4}s/^/#/" $file
