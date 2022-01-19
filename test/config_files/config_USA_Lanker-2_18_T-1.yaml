@@ -1,0 +1,18 @@
+# add here the directory of commonroad-qp-planner
+scenario_settings:
+    scenario_name: USA_Lanker-2_18_T-1         # set correct scenario name
+    draw: True
+
+general_planning_settings:
+    predict_horizon: 10           # (planning) horizon
+
+
+vehicle_settings:
+    21007:  # planning problem ID from CommonRoad scenario file
+        reference_point: rear           # reference point of vehicle
+        vehicle_model: parameters_vehicle2  # use the parameter of vehicle 2
+        wheelbase: 2.578
+        resampling_reference_path: True  # resample the reference path
+
+
+
