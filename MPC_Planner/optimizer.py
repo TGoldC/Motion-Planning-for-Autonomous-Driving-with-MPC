@@ -369,17 +369,76 @@ class CasadiOptimizer(Optimizer):
     def __init__(self, resampled_path_points, iter_length, init_values, delta_t, desired_velocity, orientation, p, predict_horizon):
         super(CasadiOptimizer, self).__init__(resampled_path_points, iter_length, init_values, delta_t, desired_velocity, orientation, p, predict_horizon)
         # self. = ... # add own attributes
+    
+    def compute_centers_of_approximation_cicles(self, x_position, y_position, ego_length, orientation):
+        #the distance between the first and last circle is computed as
+        distance_centers = (ego_length / 3) * (3 - 1)
+        
+        #compute the center position of first circle (front)
+        center_fw = [x_position + (distance_centers / 2) * ca.cos(orientation), y_position + (distance_centers / 2) * ca.sin(orientation)]
+        
+        #compute the center position of second circle (rear)
+        center_rw = [x_position - (distance_centers / 2) * ca.cos(orientation), y_position - (distance_centers / 2) * ca.sin(orientation)]
+        
+        return center_fw, center_rw
+    
+    def compute_approximating_circle_radius(ego_length, ego_width):
+        """
+        From Julia Kabalar
+        Computes parameters of the circle approximation of the ego_vehicle
+    
+        :param ego_length: Length of ego vehicle
+        :param ego_width: Width of ego vehicle
+        :return: radius of circle approximation, circle center point distance
+        """
+        assert ego_length >= 0 and ego_width >= 0, 'Invalid vehicle dimensions = {}'.format([ego_length, ego_width])
+    
+        if np.isclose(ego_length, 0.0) and np.isclose(ego_width, 0.0):
+            return 0.0, 0.0
+    
+        # Divide rectangle into 3 smaller rectangles
+        square_length = ego_length / 3
+
+        #the distance between the first and last circle is computed as
+        distance_centers = square_length * (3-1)
+    
+        # Calculate minimum radius
+        diagonal_square = np.sqrt((square_length / 2) ** 2 + (ego_width / 2) ** 2)
+    
+        # Round up value
+        if diagonal_square > round(diagonal_square, 1):
+            approx_radius = round(diagonal_square, 1) + 0.1
+        else:
+            approx_radius = round(diagonal_square, 1)
+    
+        return approx_radius, round(square_length * 2, 1)
+
+    def compute_centers_of_approximation_cicles(self, x_position, y_position, ego_length, orientation):
+        #the distance between the first and last circle is computed as
+        distance_centers = (ego_length / 3) * (3 - 1)
+        
+        #compute the center position of first circle (front)
+        center_fw = [x_position + (distance_centers / 2) * ca.cos(orientation), y_position + (distance_centers / 2) * ca.sin(orientation)]
+        
+        #compute the center position of second circle (rear)
+        center_rw = [x_position - (distance_centers / 2) * ca.cos(orientation), y_position - (distance_centers / 2) * ca.sin(orientation)]
+        
+        return center_fw, center_rw
 
     def equal_constraints(self, states):
         g = []  # equal constraints
         for i in range(self.predict_horizon): #or N+1
             g.append(states[2, i])
             g.append(states[3, i])
-        obs_x = 0
-        obs_y = 0
-        obs_diam = 1
+        obs_x = 30
+        obs_y = 23
+        obs_orientation = 0.02
+        obs_center_fw, obs_center_rw = self.compute_centers_of_approximation_cicles(obs_x, obs_y, 4.5, obs_orientation)
+        for i in range(self.predict_horizon):
+                ego_center_fw, ego_center_rw = self.compute_centers_of_approximation_cicles(states[0, i], states[1, i], 4.5, self.orientation)
         #for i in range(self.predict_horizon):
-        #    g.append(ca.sqrt((states[0, i]-obs_x)**2+(states[1, i]-obs_y)**2)) # should be smaller als 0.0
+        #    #g.append(ca.sqrt((states[0, i]-obs_x)**2+(states[1, i]-obs_y)**2)) 
+        #    g.append(ca.sqrt((ego_center_fw[0, i]-obs_x)**2+(ego_center_fw[1, i]-obs_y)**2)) 
         return g
 
     def inequal_constraints(self):
@@ -400,7 +459,7 @@ class CasadiOptimizer(Optimizer):
             lbx.append(-np.inf)
             ubx.append(np.inf)
         #for _ in range(self.predict_horizon):
-        #    lbg.append(0.3)
+        #    lbg.append(self.compute_approximating_circle_radius(4.5, 2)+self.compute_approximating_circle_radius(4.5, 2))
         #    ubg.append(np.inf)
         return lbg, ubg, lbx, ubx
 
@@ -533,12 +592,20 @@ class CasadiOptimizer(Optimizer):
         traj_s = np.array(traj)
         traj_s = np.squeeze(traj_s)
         traj_r = np.array(ref)
+        print(traj_s[:, 0], traj_s[:, 1])
+        print(traj_r[:, 0], traj_r[:, 1])
         plt.figure()
         plt.plot(traj_s[:, 0], traj_s[:, 1])
         plt.plot(traj_r[:, 0], traj_r[:, 1])
         plt.plot()
         plt.axis('equal')
         plt.title('MPC_Path')
+        plt.show()
+        plt.figure()
+        plt.plot(traj_s[:, 0], traj_s[:, 1])
+        plt.plot()
+        plt.axis('equal')
+        plt.title('Actual_Path')
         plt.show()
 
         ## animation
