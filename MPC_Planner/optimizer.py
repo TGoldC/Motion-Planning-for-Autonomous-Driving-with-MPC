@@ -233,7 +233,7 @@ class ForcesproOptimizer(Optimizer):
             #     plt.show()
             # else:
             #     plt.draw()
-        return x
+        return x.T
 
     @staticmethod
     def createPlot(x, u, start_pred, sim_length, model, path_points, xinit):

@@ -61,47 +61,49 @@ class MPCPlanner(object):
     #     return resampled_reference_path, iter_length
 
     def plot_and_create_gif(self, x):
-        dynamic_obstacle_initial_state = State(position=np.array([self.init_values[0][0], self.init_values[0][1]]),
-                                               velocity=self.init_values[2],
-                                               orientation=self.init_values[3],
-                                               time_step=0)
+        ego_vehicle_initial_state = State(position=np.array([self.init_values[0][0], self.init_values[0][1]]),
+                                          velocity=self.init_values[2],
+                                          orientation=self.init_values[3],
+                                          time_step=0)
         # generate the states for the obstacle for time steps 1 to 40 by assuming constant velocity
         state_list = []
 
         for i in range(1, self.configuration.iter_length):
             # compute new position
-            new_position = np.array([x[0, i], x[1, i]])
+            new_position = np.array([x[i, 0], x[i, 1]])
             # create new state
-            new_state = State(position=new_position, velocity=x[3, i], orientation=x[4, i], time_step=i)
+            new_state = State(position=new_position, velocity=x[i, 3], orientation=x[i, 4], time_step=i)
             # add new state to state_list
             state_list.append(new_state)
 
         # create the trajectory of the obstacle, starting at time step 1
-        dynamic_obstacle_trajectory = Trajectory(1, state_list)
+        ego_vehicle_trajectory = Trajectory(1, state_list)
 
         # create the prediction using the trajectory and the shape of the obstacle
-        dynamic_obstacle_shape = Rectangle(width=1.8, length=4.3)
-        dynamic_obstacle_prediction = TrajectoryPrediction(dynamic_obstacle_trajectory, dynamic_obstacle_shape)
+        ego_vehicle_shape = Rectangle(width=1.8, length=4.3)
+        ego_vehicle_prediction = TrajectoryPrediction(ego_vehicle_trajectory, ego_vehicle_shape)
 
         # generate the dynamic obstacle according to the specification
-        dynamic_obstacle_id = self.scenario.generate_object_id()
-        dynamic_obstacle_type = ObstacleType.CAR
-        dynamic_obstacle = DynamicObstacle(dynamic_obstacle_id,
-                                           dynamic_obstacle_type,
-                                           dynamic_obstacle_shape,
-                                           dynamic_obstacle_initial_state,
-                                           dynamic_obstacle_prediction)
-
-        # add dynamic obstacle to the scenario
-        self.scenario.add_objects(dynamic_obstacle)
+        ego_vehicle_id = self.scenario.generate_object_id()
+        ego_vehicle_type = ObstacleType.CAR
+        ego_vehicle = DynamicObstacle(ego_vehicle_id,
+                                      ego_vehicle_type,
+                                      ego_vehicle_shape,
+                                      ego_vehicle_initial_state,
+                                      ego_vehicle_prediction)
 
         # plot the scenario for each time step
         for i in range(0, self.configuration.iter_length):
             plt.figure(figsize=(25, 10))
             rnd = MPRenderer()
             self.scenario.draw(rnd, draw_params={'time_begin': i})
+            ego_vehicle.draw(rnd, draw_params={'time_begin': i, 'dynamic_obstacle': {
+                'vehicle_shape': {'occupancy': {'shape': {'rectangle': {
+                    'facecolor': 'r'}}}}}})
             self.planning_problem.draw(rnd)
             rnd.render()
+            rnd.ax.plot(self.configuration.reference_path[i, 0], self.configuration.reference_path[i, 1], color='r', marker='.', markersize=1, zorder=19, linewidth=0.8,
+                        label='reference path')
             plt.savefig("../test/figures_{}/temp{}.png".format(str(self.scenario.scenario_id), i))
             # plt.show()
             plt.clf()
