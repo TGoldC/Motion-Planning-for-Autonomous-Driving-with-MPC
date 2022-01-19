@@ -1,4 +1,3 @@
-from commonroad_route_planner.route_planner import RoutePlanner
 from commonroad.scenario.trajectory import State, Trajectory
 from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.geometry.shape import Rectangle
@@ -6,38 +5,19 @@ from commonroad.scenario.obstacle import ObstacleType, DynamicObstacle
 from commonroad.visualization.mp_renderer import MPRenderer
 import commonroad_dc.feasibility.feasibility_checker as feasibility_checker
 from commonroad_dc.feasibility.vehicle_dynamics import VehicleDynamics, VehicleType
-from optimizer import *
+from MPC_Planner.optimizer import *
 import imageio
 import sys
 sys.path.append("..")
 
 
 class MPCPlanner(object):
-    def __init__(self, scenario, planning_problem):
+    def __init__(self, scenario, planning_problem, configuration, predict_horizon):
         self.scenario = scenario
         self.planning_problem = planning_problem
-        self.origin_reference_path = self._generate_reference_path()
-        self.desired_velocity, self.delta_t = self.get_desired_velocity_and_delta_t()
+        self.configuration = configuration
         self.init_values = self.get_init_values()
-
-    def get_desired_velocity_and_delta_t(self):
-        # goal state configuration
-        if hasattr(self.planning_problem.goal.state_list[0], 'velocity'):
-            if self.planning_problem.goal.state_list[0].velocity.start != 0:
-                desired_velocity = (self.planning_problem.goal.state_list[0].velocity.start
-                                    + self.planning_problem.goal.state_list[0].velocity.end) / 2
-            else:
-                desired_velocity = (self.planning_problem.goal.state_list[0].velocity.start
-                                    + self.planning_problem.goal.state_list[0].velocity.end) / 2
-        else:
-            desired_velocity = self.planning_problem.initial_state.velocity
-
-        if not hasattr(self.scenario, 'dt'):
-            delta_t = 0.1  # default time step
-        else:
-            delta_t = self.scenario.dt
-
-        return desired_velocity, delta_t
+        self.predict_horizon = predict_horizon
 
     def get_init_values(self):
 
@@ -63,24 +43,24 @@ class MPCPlanner(object):
 
         return init_position, init_velocity, init_acceleration, init_orientation
 
-    def _generate_reference_path(self):
-        """
-        position_init: 1D array (x_pos, y_pos); the initial position of the planning problem
-        reference_path: the output of route planner, which is considered as reference path
-        """
-        route_planer = RoutePlanner(self.scenario, self.planning_problem, backend=RoutePlanner.Backend.NETWORKX)
-        candidate_route = route_planer.plan_routes()
-        origin_reference_path = candidate_route.retrieve_best_route_by_orientation().reference_path  # 800*2
-        return origin_reference_path
+    # def _generate_reference_path(self):
+    #     """
+    #     position_init: 1D array (x_pos, y_pos); the initial position of the planning problem
+    #     reference_path: the output of route planner, which is considered as reference path
+    #     """
+    #     route_planer = RoutePlanner(self.scenario, self.planning_problem, backend=RoutePlanner.Backend.NETWORKX)
+    #     candidate_route = route_planer.plan_routes()
+    #     origin_reference_path = candidate_route.retrieve_best_route_by_orientation().reference_path  # 800*2
+    #     return origin_reference_path
+    #
+    # def resample_reference_path(self):
+    #     cumsum_distance = compute_polyline_length(self.origin_reference_path)
+    #     reference_path = np.array(chaikins_corner_cutting(self.origin_reference_path))
+    #     resampled_reference_path = resample_polyline(reference_path, step=self.desired_velocity * self.delta_t)
+    #     iter_length = resampled_reference_path.shape[0]
+    #     return resampled_reference_path, iter_length
 
-    def resample_reference_path(self):
-        cumsum_distance = compute_polyline_length(self.origin_reference_path)
-        reference_path = np.array(chaikins_corner_cutting(self.origin_reference_path))
-        resampled_reference_path = resample_polyline(reference_path, step=self.desired_velocity * self.delta_t)
-        iter_length = resampled_reference_path.shape[0]
-        return resampled_reference_path, iter_length
-
-    def plot_and_create_gif(self, iter_length, x):
+    def plot_and_create_gif(self, x):
         dynamic_obstacle_initial_state = State(position=np.array([self.init_values[0][0], self.init_values[0][1]]),
                                                velocity=self.init_values[2],
                                                orientation=self.init_values[3],
@@ -88,7 +68,7 @@ class MPCPlanner(object):
         # generate the states for the obstacle for time steps 1 to 40 by assuming constant velocity
         state_list = []
 
-        for i in range(1, iter_length):
+        for i in range(1, self.configuration.iter_length):
             # compute new position
             new_position = np.array([x[0, i], x[1, i]])
             # create new state
@@ -116,24 +96,25 @@ class MPCPlanner(object):
         self.scenario.add_objects(dynamic_obstacle)
 
         # plot the scenario for each time step
-        for i in range(0, iter_length):
+        for i in range(0, self.configuration.iter_length):
             plt.figure(figsize=(25, 10))
             rnd = MPRenderer()
             self.scenario.draw(rnd, draw_params={'time_begin': i})
             self.planning_problem.draw(rnd)
             rnd.render()
-            plt.savefig("../figures/temp{}.png".format(i))
+            plt.savefig("../test/figures_{}/temp{}.png".format(str(self.scenario.scenario_id), i))
             # plt.show()
             plt.clf()
 
         figures_list = []
-        for i in range(0, iter_length):
-            figures_list.append("../figures/temp{}.png".format(i))
-        with imageio.get_writer('../mygif.gif', mode='I') as writer:
+        for i in range(0, self.configuration.iter_length):
+            figures_list.append("../test/figures_{}/temp{}.png".format(str(self.scenario.scenario_id), i))
+        with imageio.get_writer("../test/gif_{}.gif".format(str(self.scenario.scenario_id)), mode='I') as writer:
             for filename in figures_list:
                 image = imageio.imread(filename)
                 writer.append_data(image)
 
+    # TODO
     def check_feasibility(self, ego_vehicle_trajectory):
         # set time step as scenario time step
         dt = self.scenario.dt
@@ -147,48 +128,16 @@ class MPCPlanner(object):
 
     def plan(self, name_solver):
         assert name_solver == "casadi" or "forcespro" or "Casadi" or "Forcespro", 'Cannot find settings for planning problem {}'.format(name_solver)
-        # resample the original reference path
-        resampled_path_points, iter_length = self.resample_reference_path()
+        init_values = self.get_init_values()
 
-        # get init values and desired velocity
-        init_values = MPC_Planner_instance.get_init_values()  # init_position, init_velocity, init_acceleration, init_orientation
-        desired_velocity, delta_t = MPC_Planner_instance.get_desired_velocity_and_delta_t()
-
-        # compute orientation from resampled reference path
-        orientation = compute_orientation_from_polyline(resampled_path_points)
-
-        if name_solver == "forcespro" or "Forcespro":
-            optimizer = ForcesproOptimizer(p=parameters_vehicle2(),
-                                           predict_horizon=10,
-                                           resampled_path_points=resampled_path_points,
-                                           iter_length=iter_length,
-                                           init_values=init_values,
-                                           delta_t=delta_t,
-                                           desired_velocity=desired_velocity,
-                                           orientation=orientation)
+        if name_solver == "casadi" or name_solver == "Casadi":
+            optimizer = CasadiOptimizer(configuration=self.configuration, init_values=init_values, predict_horizon=self.predict_horizon)
         else:
-            optimizer = CasadiOptimizer(p=parameters_vehicle2(),
-                                        predict_horizon=10,
-                                        resampled_path_points=resampled_path_points,
-                                        iter_length=iter_length,
-                                        init_values=init_values,
-                                        delta_t=delta_t,
-                                        desired_velocity=desired_velocity,
-                                        orientation=orientation)
+            optimizer = ForcesproOptimizer(configuration=self.configuration, init_values=init_values, predict_horizon=self.predict_horizon)
+            
         final_states = optimizer.optimize()
-        self.plot_and_create_gif(iter_length, final_states)
+        self.plot_and_create_gif(final_states)
 
-
-if __name__ == '__main__':
-    # define the scenario and planning problem
-    path_scenario = "../scenarios/"  # relative dir path, scenarios and mpc_planner.py are in the same directory
-    id_scenario = "USA_Lanker-2_18_T-1.xml"  # "ZAM_Tutorial_Urban-3_2.xml"
-    scenario, planning_problem_set = CommonRoadFileReader(path_scenario + id_scenario).open()
-    planning_problem = list(planning_problem_set.planning_problem_dict.values())[0]
-    MPC_Planner_instance = MPCPlanner(scenario, planning_problem)
-    MPC_Planner_instance.plan("forcespro")
-    # MPC_Planner_instance.plan("casadi")
-    # TODO introduce Collision Avoidance feature
 
 
 

@@ -18,7 +18,7 @@ from commonroad.scenario.lanelet import LaneletNetwork, Lanelet
 
 # commonroad-curvilinear-coordinate-system
 import commonroad_dc.pycrccosy as pycrccosy
-from commonroad_dc.geometry.util import (chaikins_corner_cutting, compute_curvature_from_polyline, resample_polyline)
+from commonroad_dc.geometry.util import (chaikins_corner_cutting, compute_curvature_from_polyline, resample_polyline, compute_orientation_from_polyline)
 
 
 VEHICLE_ID = int
@@ -154,7 +154,7 @@ class PlanningConfigurationVehicle:
 
 
 class VehicleDynamics(object):
-    def __init__(self, p):
+    def __init__(self, p=parameters_vehicle2()):
         self.p = p
         self.l = p.a + p.b
         self.g = 9.81
@@ -236,20 +236,34 @@ class Configuration(object):
         self.route_planner = RoutePlanner(scenario,
                                           planning_problem,
                                           backend=RoutePlanner.Backend.NETWORKX_REVERSED)
-        self.vehicle_configuration = self.create_optimization_configuration_vehicle()
+        self.configuration = self.create_optimization_configuration_vehicle()
+        # contain configuration of vehicle and problem_configuration(delta_t, resampled_reference_path)
 
     def create_optimization_configuration_vehicle(self):
         assert (self.planning_problem.planning_problem_id in self.settings["vehicle_settings"]), \
             'Cannot find settings for planning problem {}'.format(self.planning_problem.planning_problem_id)
 
         vehicle_settings = self.settings["vehicle_settings"][self.planning_problem.planning_problem_id]
+
+        # add some attributes to configuration
         configuration = PlanningConfigurationVehicle()
 
-        reference_path, lanelets_leading_to_goal = self.find_reference_path_and_lanelets_leading_to_goal()
-        # TODO change the resample method
-
+        desired_velocity, delta_t = self.get_desired_velocity_and_delta_t()
+        configuration.desired_velocity = desired_velocity
+        configuration.delta_t = delta_t
+        # add reference path
+        reference_path, lanelets_leading_to_goal = self.find_reference_path_and_lanelets_leading_to_goal(desired_velocity, delta_t)
         configuration.lanelet_network = self.create_lanelet_network(self.scenario.lanelet_network, lanelets_leading_to_goal)
         configuration.reference_path = np.array(reference_path)
+
+        configuration.iter_length = reference_path.shape[0]
+
+        # compute orientation from resampled reference path
+        orientation = compute_orientation_from_polyline(reference_path)
+        configuration.orientation = orientation
+
+        # add predict horizon
+        configuration.predict_horizon = self.settings["general_planning_settings"]["predict_horizon"]
 
         if 'reference_point' in vehicle_settings:
             configuration.reference_point = self.set_reference_point(vehicle_settings['reference_point'])
@@ -260,6 +274,8 @@ class Configuration(object):
 
         configuration.curvilinear_coordinate_system = self.create_curvilinear_coordinate_system(
             configuration.reference_path)
+
+        # configuration.vehicle_dynamics = VehicleDynamics(configuration.p)
 
         return configuration
 
@@ -273,95 +289,47 @@ class Configuration(object):
             raise ValueError("<set_reference_point>: reference point of the ego vehicle is unknown: {}".format(
                 reference_point))
 
-    def find_reference_path_and_lanelets_leading_to_goal(self):
+    def find_reference_path_and_lanelets_leading_to_goal(self, desired_velocity, delta_t):
         """
         Find a reference path (and the corresponding lanelets) to the given goal region. The obtained reference path will be
         resampled if needed.
         """
-        def interval_extract(list_ids):
-            list_ids = sorted(set(list_ids))
-            range_start = previous_number = list_ids[0]
-            merged_intervals = list()
-            for number in list_ids[1:]:
-                if number == previous_number + 1:
-                    previous_number = number
-                else:
-                    merged_intervals.append([range_start, previous_number])
-                    range_start = previous_number = number
-            merged_intervals.append([range_start, previous_number])
-            return merged_intervals
-
         assert (self.planning_problem.planning_problem_id in self.settings["vehicle_settings"]), \
             'Cannot find settings for planning problem {}'.format(self.planning_problem.planning_problem_id)
 
         vehicle_settings = self.settings["vehicle_settings"][self.planning_problem.planning_problem_id]
 
         candidate_holder = self.route_planner.plan_routes()
-        route = candidate_holder.retrieve_first_route()
-        reference_path = route.reference_path
+        route = candidate_holder.retrieve_best_route_by_orientation()
+        origin_reference_path = route.reference_path  # origin reference path from route planner
         lanelets_leading_to_goal = route.list_ids_lanelets
 
-        # visualize the route
-        # visualize_route(route, draw_route_lanelets=True, draw_reference_path=True, size_x=6)
-
-        # extend the reference path:
-        first_lanelet = self.route_planner.lanelet_network.find_lanelet_by_id(lanelets_leading_to_goal[0])
-        while first_lanelet.predecessor:
-            first_lanelet = self.route_planner.lanelet_network.find_lanelet_by_id(first_lanelet.predecessor[0])
-            reference_path = np.concatenate((first_lanelet.center_vertices, reference_path))
-        last_lanelet = self.route_planner.lanelet_network.find_lanelet_by_id(lanelets_leading_to_goal[-1])
-        while last_lanelet.successor:
-            last_lanelet = self.route_planner.lanelet_network.find_lanelet_by_id(last_lanelet.successor[0])
-            reference_path = np.concatenate((reference_path, last_lanelet.center_vertices))
-
-        max_curvature = vehicle_settings['max_curvature_reference_path'] + 0.2
         # resampling the reference path
         if vehicle_settings['resampling_reference_path']:
-            while max_curvature > vehicle_settings['max_curvature_reference_path']:
-                reference_path = np.array(chaikins_corner_cutting(reference_path))
-                reference_path = resample_polyline(reference_path, vehicle_settings['resampling_reference_path'])
-                abs_curvature = abs(compute_curvature_from_polyline(reference_path))
-                max_curvature = max(abs_curvature)
-            if 'resampling_reference_path_depending_on_curvature' in vehicle_settings \
-                    and vehicle_settings['resampling_reference_path_depending_on_curvature']:
-                # resample path with higher value where curvature is small
-                resampled_path = list()
-                intervals = list()
-                abs_curvature[0:5] = 0.2
-                merged_intervals_ids = interval_extract([i for i, v in enumerate(abs_curvature) if v < 0.01])
-                for i in range(0, len(merged_intervals_ids) - 1):
-                    if i == 0 and merged_intervals_ids[i][0] != 0:
-                        intervals.append([0, merged_intervals_ids[i][0]])
-                    if merged_intervals_ids[i][0] != merged_intervals_ids[i][1]:
-                        intervals.append(merged_intervals_ids[i])
-                    intervals.append([merged_intervals_ids[i][1], merged_intervals_ids[i + 1][0]])
-
-                if len(merged_intervals_ids) == 1:
-                    if merged_intervals_ids[0][0] != 0:
-                        intervals.append([0, merged_intervals_ids[0][0]])
-                    if merged_intervals_ids[0][0] != merged_intervals_ids[0][1]:
-                        intervals.append(merged_intervals_ids[0])
-
-                if intervals and intervals[-1][1] != len(reference_path):
-                    intervals.append([intervals[-1][1], len(reference_path)])
-
-                resampled_path = None
-                for i in intervals:
-                    if i in merged_intervals_ids:
-                        step = 3.
-                    else:
-                        step = vehicle_settings['resampling_reference_path']
-                    if resampled_path is None:
-                        resampled_path = resample_polyline(reference_path[i[0]:i[1]], step)
-                    else:
-                        resampled_path = np.concatenate(
-                            (resampled_path, resample_polyline(reference_path[i[0]:i[1]], step)))
-            else:
-                resampled_path = reference_path
-
+            reference_path = np.array(chaikins_corner_cutting(origin_reference_path))
+            resampled_path = resample_polyline(reference_path, step=desired_velocity * delta_t)
         else:
-            resampled_path = reference_path
+            resampled_path = origin_reference_path
         return resampled_path, lanelets_leading_to_goal
+
+    def get_desired_velocity_and_delta_t(self):
+        # goal state configuration
+        if hasattr(self.planning_problem.goal.state_list[0], 'velocity'):
+            if self.planning_problem.goal.state_list[0].velocity.start != 0:
+                desired_velocity = (self.planning_problem.goal.state_list[0].velocity.start
+                                    + self.planning_problem.goal.state_list[0].velocity.end) / 2
+            else:
+                desired_velocity = (self.planning_problem.goal.state_list[0].velocity.start
+                                    + self.planning_problem.goal.state_list[0].velocity.end) / 2
+        else:
+            desired_velocity = self.planning_problem.initial_state.velocity
+
+        if not hasattr(self.scenario, 'dt'):
+            delta_t = 0.1  # default time step
+        else:
+            delta_t = self.scenario.dt
+
+        return desired_velocity, delta_t
 
     @staticmethod
     def create_lanelet_network(lanelet_network: LaneletNetwork, lanelets_leading_to_goal: List[int]) -> LaneletNetwork:

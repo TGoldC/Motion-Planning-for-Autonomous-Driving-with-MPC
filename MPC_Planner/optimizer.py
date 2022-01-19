@@ -2,8 +2,7 @@ import casadi as ca
 import numpy as np
 import forcespro
 import forcespro.nlp
-from configuration import VehicleDynamics
-from vehiclemodels.parameters_vehicle2 import parameters_vehicle2
+from MPC_Planner.configuration import VehicleDynamics
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from commonroad.common.file_reader import CommonRoadFileReader
@@ -15,25 +14,26 @@ import time
 
 
 class Optimizer(object):
-    def __init__(self, resampled_path_points, iter_length, init_values, delta_t, desired_velocity, orientation, p=parameters_vehicle2(), predict_horizon=10):
+    # def __init__(self, resampled_path_points, iter_length, init_values, delta_t, desired_velocity, orientation, p=parameters_vehicle2(), predict_horizon=10):
+    def __init__(self, configuration, init_values, predict_horizon):
         # steering angles
-        self.delta_min = p.steering.min  # -1.066
-        self.delta_max = p.steering.max  # 1.066
+        self.delta_min = configuration.p.steering.min  # -1.066
+        self.delta_max = configuration.p.steering.max  # 1.066
         # steering velocity
-        self.deltav_min = p.steering.v_min  # -0.4
-        self.deltav_max = p.steering.v_max  # 0.4
+        self.deltav_min = configuration.p.steering.v_min  # -0.4
+        self.deltav_max = configuration.p.steering.v_max  # 0.4
         # velocity
         self.v_min = 0  # highway
-        self.v_max = p.longitudinal.v_max  # 50.8
+        self.v_max = configuration.p.longitudinal.v_max  # 50.8
         # acceleration
-        self.a_max = p.longitudinal.a_max  # 11.5
+        self.a_max = configuration.p.longitudinal.a_max  # 11.5
 
-        self.resampled_path_points = resampled_path_points
-        self.iter_length = iter_length
+        self.resampled_path_points = configuration.reference_path
+        self.iter_length = configuration.iter_length
         self.init_position, self.init_velocity, self.init_acceleration, self.init_orientation = init_values[0], init_values[1], init_values[2], init_values[3]
-        self.delta_t = delta_t
-        self.desired_velocity = desired_velocity
-        self.orientation = orientation
+        self.delta_t = configuration.delta_t
+        self.desired_velocity = configuration.desired_velocity
+        self.orientation = configuration.orientation
         self.predict_horizon = predict_horizon
 
     def equal_constraints(self, *args, **kwargs):
@@ -48,13 +48,13 @@ class Optimizer(object):
     def solver(self):
         pass
 
-    def optimize(cls):
+    def optimize(self):
         pass
 
 
 class ForcesproOptimizer(Optimizer):
-    def __init__(self, resampled_path_points, iter_length, init_values, delta_t, desired_velocity, orientation, p, predict_horizon):
-        super(ForcesproOptimizer, self).__init__(resampled_path_points, iter_length, init_values, delta_t, desired_velocity, orientation, p, predict_horizon)
+    def __init__(self, configuration, init_values, predict_horizon):
+        super(ForcesproOptimizer, self).__init__(configuration, init_values, predict_horizon)
         # self. = ... # add own attributes
 
     @staticmethod
@@ -365,8 +365,8 @@ class ForcesproOptimizer(Optimizer):
 
 
 class CasadiOptimizer(Optimizer):
-    def __init__(self, resampled_path_points, iter_length, init_values, delta_t, desired_velocity, orientation, p, predict_horizon):
-        super(CasadiOptimizer, self).__init__(resampled_path_points, iter_length, init_values, delta_t, desired_velocity, orientation, p, predict_horizon)
+    def __init__(self, configuration, init_values, predict_horizon):
+        super(CasadiOptimizer, self).__init__(configuration, init_values, predict_horizon)
         # self. = ... # add own attributes
 
     def equal_constraints(self, states):
@@ -423,7 +423,7 @@ class CasadiOptimizer(Optimizer):
         controls = ca.vertcat(*[u0, u1])
         num_controls = controls.size()[0]
         # get euqations from dynamics.py
-        d = Vehicle_dynamics()
+        d = VehicleDynamics()
         rhs = d.KS(states, controls, type='casadi')
         f = ca.Function('f', [states, controls], [rhs], ['input_state', 'control_input'], ['rhs'])
         # for MPC
@@ -559,7 +559,6 @@ class CasadiOptimizer(Optimizer):
         u_end = ca.horzcat(u[:, 1:], u[:, -1])
 
         return t, st, u_end.T
-
 
 
 # class Optimizer(object):
