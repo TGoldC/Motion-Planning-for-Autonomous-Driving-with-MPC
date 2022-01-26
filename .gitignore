@@ -1,0 +1,8 @@
+# ignore dir
+/Arvhive
+/.idea
+/test/FORCESNLPsolver
+
+# ignore file
+*.log
+*.forces

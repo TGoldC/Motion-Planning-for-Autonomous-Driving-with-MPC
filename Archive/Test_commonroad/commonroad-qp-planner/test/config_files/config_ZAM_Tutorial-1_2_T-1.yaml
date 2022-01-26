@@ -1,0 +1,76 @@
+# add here the directory of commonroad-qp-planner
+scenario_settings:
+    scenario_name: &scenario_name ZAM_Tutorial-1_2_T-1         # set correct scenario name
+    draw: True
+
+general_planning_settings:
+    time_horizon: 4.0            # (planning) horizon
+
+
+vehicle_settings:
+    100:  # planning problem ID from CommonRoad scenario file
+        reference_point: rear           # reference point of vehicle
+        min_speed_x: 0.0                # v_x constraint (see Eq. 6b in Manzinger, 2020)
+        max_speed_x: 22.0
+        min_speed_y: -4.0               # v_y constraint (see Eq. 6b in Manzinger, 2020)
+        max_speed_y: 4.0
+        a_max_x: 3.5                    # a_x constraint (see Eq. 6b in Manzinger, 2020)
+        a_min_x: -6.0
+        a_max_y: 4.0                    # a_y constraint (see Eq. 6b in Manzinger, 2020)
+        a_min_y: -4.0
+        a_max: 9.81
+        j_min_x: -10.0                  # jerk constraint (for planning)
+        j_max_x: 10.0
+        j_min_y: -10.0
+        j_max_y: 10.0
+        length: 4.508                   # vehicle length
+        width: 1.610                    # vehicle width
+        wheelbase: 2.578
+        desired_speed: 30.0             # target speed (for planning)
+        resampling_reference_path: 1.5  # resampling for curvilinear CoSy
+        #overwrite_reference_path: [436, 446, 456, 466, 478]
+        max_curvature_reference_path: 0.01  # for curvilinear CoSy
+
+debugging_settings:
+    draw_solution: True                 # True to draw and store reachable sets
+    draw_window: !!null
+    store_config: False
+    folder_dir: &folder_dir evaluation/
+    directory: !!python/object/apply:os.path.join [*folder_dir, *scenario_name]         # directory to store plots
+
+# Planner specific configurations
+qp_planner:
+    zero_v_constr: False
+    # forbidden_lanelets: [452, 462, 474, 472, 470]
+
+    longitudinal_parameters:
+        W_S: 0.0 # weight for state deviation
+        W_V: 0.4 # weight for velocity deviation
+        W_A: 1.0 # weight for acceleration deviation
+        W_J: 2.0 # weight for jerk deviation
+        W_U: 0.1 # weight for input
+        W_S_Q: 10.0 # weight for quadratic slack costs SOFT POS CONSTRAINTS
+        W_S_L: 50.0  # weight for linear slack costs SOFT POS CONSTRAINTS
+        W_C_Q: 5.0 # weight for quadratic slack costs for collision mitigation
+        W_C_L: 50.0 # weight for linear slack costs for collision mitigation
+        W_S_A_L: 10.0 # weight for lower acceleration slack
+        W_S_A_U: 2.0  # weight for upper acceleration slack
+        L_ENLARGE: 0.0 # add 0.3m to the length of every vehicle for collision avoidance
+
+    lateral_parameters:
+        W_D: 0.05 # weight for d deviation
+        W_THETA: 15.1 # weight for theta deviation
+        W_KAPPA: 40.0 # weight for kappa deviation
+        W_D_N: 0.15 # weight for d deviation at end state
+        W_THETA_N: 5.0 # weight for theta deviation at end state
+        W_KAPPA_N: 1.0 # weight for kappa deviation at end state
+        W_KAPPA_DOT: 20.0 # weight for kappa dot deviation
+        W_U: 1.0 # weight for input deviation
+        W_SLACK_L: 5.0 # linear weight for slack variables
+        W_SLACK_Q: 2.0 # quadratic weight for slack variables
+        KAPPA_DOT_MIN: -0.2 # minimum steering rate
+        KAPPA_DOT_MAX: 0.2 # maximum steering rate
+        KAPPA_DOT_DOT_MIN: -100 # minimum steering rate rate
+        KAPPA_DOT_DOT_MAX: 100 # maximum steering rate rate
+        KAPPA_MAX: 0.2 # maximum curvature
+
