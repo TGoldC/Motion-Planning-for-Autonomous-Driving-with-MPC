@@ -214,12 +214,13 @@ class ForcesproOptimizer(Optimizer):
             pred_x = temp[2:7, :]  # N predicted states, 5*N
 
             # Apply optimized input u of first stage to system and save simulation data
-            u[:, k] = pred_u[:, 0]
+            # u[:, k] = pred_u[:, 0]
             # add Gaussian noise onto inputs
-            # noise_mean = np.array([0, 0])
-            # noise_std = np.array([0.01, 0.01])  # The larger standard deviation is, the wider range of noise is.
-            # noise = np.random.normal(noise_mean, noise_std, (2,))
+            noise_mean = np.array([0, 0])
+            noise_std = np.array([0.01, 0.01])  # The larger standard deviation is, the wider range of noise is.
+            noise = np.random.normal(noise_mean, noise_std, (2,))
             # u[:, k] = pred_u[:, 0] + noise
+            u[:, k] = pred_u[:, 0] + np.array([0.1, 0.1])
             x[:, k + 1] = np.transpose(model.eq(np.concatenate((u[:, k], x[:, k]))))  # with k-th step 's x and u，update states at (k+1)-th
 
             # plot results of current simulation step
