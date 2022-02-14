@@ -1,0 +1,33 @@
+# add here the directory of commonroad-qp-planner
+scenario_settings:
+    scenario_name: USA_Lanker-2_18_T-1        # for use case "collision avoidance"
+    use_case: lane_following      # collision_avoidance or lane_following
+    draw: True
+
+general_planning_settings:
+    framework_name: forcespro  # set forcespro or casadi
+    predict_horizon: 10           # (planning) horizon
+    noised: True # if there is noise
+
+vehicle_settings:
+    21007:  # planning problem ID from CommonRoad scenario file
+        reference_point: rear           # reference point of vehicle
+        vehicle_model: parameters_vehicle2  # use the parameter of vehicle 2
+        wheelbase: 2.578
+        resampling_reference_path: True  # resample the reference path
+
+static_obstacle:
+    position_x: 18.5  # define the position of static obstacle
+    position_y: -2
+    orientation: 1.047
+    length: 4  # define the shape of static obstacle
+    width: 2
+
+weights_setting:
+    weight_x: 200.0  # weights for penalty of x-axis position 3
+    weight_y: 200.0  # weights for penalty of y-axis position  3
+    weight_steering_angle: 150  # weights for penalty of steering angle  100
+    weight_velocity: 150  # weights for penalty of velocity  1
+    weight_heading_angle: 1  # weights for penalty of heading angle  10
+    weight_velocity_steering_angle: 100  # weights for penalty of first input: velocity of steering angle  0.8
+    weight_long_acceleration: 10 # weights for penalty of first input: longitudinal acceleration  0.8

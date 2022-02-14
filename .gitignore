@@ -1,7 +1,11 @@
 # ignore dir
-/Arvhive
+
+/Archive
 /.idea
 /test/FORCESNLPsolver
+/test/Archive_Results
+/MPC_Planner/__pycache__
+/MPC_Planner/.idea
 
 # ignore file
 *.log
