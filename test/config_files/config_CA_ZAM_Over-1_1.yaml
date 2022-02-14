@@ -1,0 +1,27 @@
+# add here the directory of commonroad-qp-planner
+scenario_settings:
+    scenario_name: ZAM_Over-1_1         # set correct scenario name
+    use_case: collision_avoidance      # collision_avoidance or lane_following
+    draw: True
+
+general_planning_settings:
+    framework_name: casadi  # set forcespro or casadi
+    predict_horizon: 10          # (planning) horizon
+    noised: True # check if there is noise
+
+
+vehicle_settings:
+    1:  # planning problem ID from CommonRoad scenario file
+        reference_point: rear           # reference point of vehicle
+        vehicle_model: parameters_vehicle2  # use the parameter of vehicle 2
+        wheelbase: 2.578
+        resampling_reference_path: True  # resample the reference path
+
+weights_setting:
+    weight_x: 2.3 # weights for penalty of x-axis position  2.3
+    weight_y: 2.3 # weights for penalty of y-axis position  2.3
+    weight_steering_angle: 300  # weights for penalty of steering angle  300
+    weight_velocity: 0.1  # weights for penalty of velocity  0.1
+    weight_heading_angle: 5  # weights for penalty of heading angle  5
+    weight_velocity_steering_angle: 0.8  # weights for penalty of first input: velocity of steering angle  0.8
+    weight_long_acceleration: 0.8  # weights for penalty of first input: longitudinal acceleration  0.8

@@ -9,20 +9,76 @@ from vehiclemodels.utils.vehicle_dynamics_ks_cog import vehicle_dynamics_ks_cog
 from vehiclemodels.vehicle_dynamics_st import vehicle_dynamics_st
 from vehiclemodels.vehicle_dynamics_std import vehicle_dynamics_std
 from commonroad_route_planner.route_planner import RoutePlanner
+from commonroad_route_planner.utility.visualization import visualize_route
 
 # commonroad-io
 from commonroad.planning.planning_problem import PlanningProblem
 from commonroad.scenario.scenario import Scenario
-from commonroad.common.validity import is_real_number
 from commonroad.scenario.lanelet import LaneletNetwork, Lanelet
 
 # commonroad-curvilinear-coordinate-system
 import commonroad_dc.pycrccosy as pycrccosy
-from commonroad_dc.geometry.util import (chaikins_corner_cutting, compute_curvature_from_polyline, resample_polyline, compute_orientation_from_polyline)
+from commonroad_dc.geometry.util import (chaikins_corner_cutting, resample_polyline, compute_orientation_from_polyline, compute_polyline_length)
 
 
 VEHICLE_ID = int
 TIME_IDX = int
+
+
+def compute_approximating_circle_radius(ego_length, ego_width) -> Tuple[Union[float, Any], Any]:
+    """
+    From Julia Kabalar
+    Computes parameters of the circle approximation of the ego_vehicle
+
+    :param ego_length: Length of ego vehicle
+    :param ego_width: Width of ego vehicle
+    :return: radius of circle approximation, circle center point distance
+    """
+    assert ego_length >= 0 and ego_width >= 0, 'Invalid vehicle dimensions = {}'.format([ego_length, ego_width])
+
+    if np.isclose(ego_length, 0.0) and np.isclose(ego_width, 0.0):
+        return 0.0, 0.0
+
+    # Divide rectangle into 3 smaller rectangles
+    square_length = ego_length / 3
+
+    # Calculate minimum radius
+    diagonal_square = np.sqrt((square_length / 2) ** 2 + (ego_width / 2) ** 2)
+
+    # Round up value
+    if diagonal_square > round(diagonal_square, 1):
+        approx_radius = round(diagonal_square, 1) + 0.1
+    else:
+        approx_radius = round(diagonal_square, 1)
+
+    return approx_radius, round(square_length * 2, 1)
+
+
+def compute_centers_of_approximation_circles(x_position, y_position, v_length, v_width, orientation):
+    """
+    Compute three center coordinates of approximated circles of the vehicle.
+    :param x_position: x position of the vehicle`s center
+    :param y_position: y position of the vehicle`s center
+    :param v_length: Length of the vehicle
+    :param v_width: Width of the vehicle
+    :param orientation: Orientation of the vehicle
+    :return: center coordinates of middle circle,  center coordinates of front wheel circle,  center coordinates of rear wheel circle
+    Hints: store the coordinates in a list, because casadi is not incompatible with numpy.
+    """
+    disc_radius, disc_distance = compute_approximating_circle_radius(v_length, v_width)
+
+    # the distance between the first and last circle is computed as
+    distance_centers = disc_distance / 2
+
+    center = [x_position, y_position]
+
+    # compute the center position of first circle (front)
+    center_fw = [x_position + (distance_centers / 2) * ca.cos(orientation), y_position + (distance_centers / 2) * ca.sin(orientation)]
+
+    # compute the center position of second circle (rear)
+    center_rw = [x_position - (distance_centers / 2) * ca.cos(orientation), y_position - (distance_centers / 2) * ca.sin(orientation)]
+
+    return center, center_fw, center_rw
 
 
 class ReferencePoint(enum.Enum):
@@ -169,58 +225,49 @@ class VehicleDynamics(object):
 
     @classmethod
     def KS_casadi(cls, x, u):
-        """Defines dynamics of the car, i.e. equality constraints.
+        """
+        Defines dynamics of kinematic single track model within casadi framework
         parameters:
-        state x = [xPos,yPos,delta,v,psi]
-        input u = [deltaDot,aLong]
+        :param x: states = [xPos,yPos,delta,v,psi]
+        :param u: control input = [deltaDot,aLong]
+        :return: function of kinematic single track vehicle` dynamic
         """
         p = parameters_vehicle2()
         l = p.a + p.b
         return ca.vertcat(x[3] * ca.cos(x[4]),
-                              x[3] * ca.sin(x[4]),
-                              u[0],
-                              u[1],
-                              x[3] / l * ca.tan(x[2]))
+                          x[3] * ca.sin(x[4]),
+                          u[0],
+                          u[1],
+                          x[3] / l * ca.tan(x[2]))
 
-    def KS(self, states, controls, type ='casadi'):
-        if type == 'casadi':
-            f = ca.vertcat(states[3]*ca.cos(states[4]))
-            f = ca.vertcat(f, states[3]*ca.sin(states[4]))
-            f = ca.vertcat(f, controls[0])
-            f = ca.vertcat(f, controls[1])
-            f = ca.vertcat(f, (ca.tan(states[2])*states[3])/self.l)
+    def ST_casadi(self, x, u):
+        """
+        Defines dynamics of Single track model within casadi framework
+        parameters:
+        :param x: states = [xPos,yPos,delta,v,psi, psi_dot, beta]
+        :param u: control input = [deltaDot,aLong]
+        :return: function of single track vehicle` dynamic
+        """
+        if abs(x[3]) < 0.1:
+            x_ks = [x[0],  x[1],  x[2],  x[3],  x[4]]
+            f_ks = vehicle_dynamics_ks_cog(x_ks, u, self.p)
+            f = [f_ks[0],  f_ks[1],  f_ks[2],  f_ks[3],  f_ks[4]]
+            d_beta = (self.lr * u[0]) / (self.l*ca.cos(x[2])**2 * (1 + (ca.tan(x[2])**2 * self.lr/self.l)**2))
+            dd_psi = 1/self.l * (u[1]*ca.cos(x[6])*ca.tan(x[2]) - x[3]*ca.sin(x[6])*d_beta*ca.tan(x[2]) + x[3]*ca.cos(x[6])*u[0]/ca.cos(x[2])**2)
+            f.append(dd_psi)
+            f.append(d_beta)
         else:
-            f = vehicle_dynamics_ks(states, controls, self.p)
-        return f
-
-    def ST(self, x, u, type ='casadi'):
-        if type == 'casadi':
-            if abs(x[3]) < 0.1:
-                x_ks = [x[0],  x[1],  x[2],  x[3],  x[4]]
-                f_ks = vehicle_dynamics_ks_cog(x_ks, u, self.p)
-                f = [f_ks[0],  f_ks[1],  f_ks[2],  f_ks[3],  f_ks[4]]
-                d_beta = (self.lr * u[0]) / (self.l*ca.cos(x[2])**2 * (1 + (ca.tan(x[2])**2 * self.lr/self.l)**2))
-                dd_psi = 1/self.l * (u[1]*ca.cos(x[6])*ca.tan(x[2]) - x[3]*ca.sin(x[6])*d_beta*ca.tan(x[2]) + x[3]*ca.cos(x[6])*u[0]/ca.cos(x[2])**2)
-                f.append(dd_psi)
-                f.append(d_beta)
-            else:
-                f = [x[3]*ca.cos(x[6] + x[4]),
-                    x[3]*ca.sin(x[6] + x[4]),
-                    u[0],
-                    u[1],
-                    x[5],
-                    -self.mu*self.m/(x[3]*self.I*(self.lr+self.lf))*(self.lf**2*self.C_Sf*(self.g*self.lr-u[1]*self.h) + self.lr**2*self.C_Sr*(self.g*self.lf + u[1]*self.h))*x[5] \
-                        +self.mu*self.m/(self.I*(self.lr+self.lf))*(self.lr*self.C_Sr*(self.g*self.lf + u[1]*self.h) - self.lf*self.C_Sf*(self.g*self.lr - u[1]*self.h))*x[6] \
-                        +self.mu*self.m/(self.I*(self.lr+self.lf))*self.lf*self.C_Sf*(self.g*self.lr - u[1]*self.h)*x[2],
-                    (self.mu/(x[3]**2*(self.lr+self.lf))*(self.C_Sr*(self.g*self.lf + u[1]*self.h)*self.lr - self.C_Sf*(self.g*self.lr - u[1]*self.h)*self.lf)-1)*x[5] \
-                        -self.mu/(x[3]*(self.lr+self.lf))*(self.C_Sr*(self.g*self.lf + u[1]*self.h) + self.C_Sf*(self.g*self.lr-u[1]*self.h))*x[6] \
-                        +self.mu/(x[3]*(self.lr+self.lf))*(self.C_Sf*(self.g*self.lr-u[1]*self.h))*x[2]]
-        else:
-            f = vehicle_dynamics_st(x, u, self.p)
-        return f
-
-    def func_STD(x, u, p):
-        f = vehicle_dynamics_std(x, u, p)
+            f = [x[3]*ca.cos(x[6] + x[4]),
+                 x[3]*ca.sin(x[6] + x[4]),
+                 u[0],
+                 u[1],
+                 x[5],
+                 - self.mu*self.m/(x[3]*self.I*(self.lr+self.lf))*(self.lf**2*self.C_Sf*(self.g*self.lr-u[1]*self.h) + self.lr**2*self.C_Sr*(self.g*self.lf + u[1]*self.h))*x[5]
+                 + self.mu*self.m/(self.I*(self.lr+self.lf))*(self.lr*self.C_Sr*(self.g*self.lf + u[1]*self.h) - self.lf*self.C_Sf*(self.g*self.lr - u[1]*self.h))*x[6]
+                 + self.mu*self.m/(self.I*(self.lr+self.lf))*self.lf*self.C_Sf*(self.g*self.lr - u[1]*self.h)*x[2],
+                 (self.mu/(x[3]**2*(self.lr+self.lf))*(self.C_Sr*(self.g*self.lf + u[1]*self.h)*self.lr - self.C_Sf*(self.g*self.lr - u[1]*self.h)*self.lf)-1)*x[5]
+                 - self.mu/(x[3]*(self.lr+self.lf))*(self.C_Sr*(self.g*self.lf + u[1]*self.h) + self.C_Sf*(self.g*self.lr-u[1]*self.h))*x[6]
+                 + self.mu/(x[3]*(self.lr+self.lf))*(self.C_Sf*(self.g*self.lr-u[1]*self.h))*x[2]]
         return f
 
 
@@ -237,25 +284,28 @@ class Configuration(object):
                                           planning_problem,
                                           backend=RoutePlanner.Backend.NETWORKX_REVERSED)
         self.configuration = self.create_optimization_configuration_vehicle()
-        # contain configuration of vehicle and problem_configuration(delta_t, resampled_reference_path)
 
     def create_optimization_configuration_vehicle(self):
+        """
+        Integrate all configurations about vehicle and planner together
+        """
         assert (self.planning_problem.planning_problem_id in self.settings["vehicle_settings"]), \
             'Cannot find settings for planning problem {}'.format(self.planning_problem.planning_problem_id)
 
+        # get vehicle settings from config file
         vehicle_settings = self.settings["vehicle_settings"][self.planning_problem.planning_problem_id]
 
         # add some attributes to configuration
         configuration = PlanningConfigurationVehicle()
 
-        desired_velocity, delta_t = self.get_desired_velocity_and_delta_t()
-        configuration.desired_velocity = desired_velocity
-        configuration.delta_t = delta_t
         # add reference path
-        reference_path, lanelets_leading_to_goal = self.find_reference_path_and_lanelets_leading_to_goal(desired_velocity, delta_t)
-        configuration.lanelet_network = self.create_lanelet_network(self.scenario.lanelet_network, lanelets_leading_to_goal)
-        configuration.reference_path = np.array(reference_path)
+        origin_reference_path, reference_path, lanelets_leading_to_goal, desired_velocity, delta_t = self.find_reference_path_and_desired_velocity()
+        configuration.lanelet_network = self.create_lanelet_network(self.scenario.lanelet_network, lanelets_leading_to_goal)  # lanelet network
+        configuration.origin_reference_path = origin_reference_path  # original reference path coming from route planner
+        configuration.reference_path = np.array(reference_path)  # clipped and resampled reference path, which would be used in optimizer.
 
+        configuration.desired_velocity = desired_velocity  #
+        configuration.delta_t = delta_t
         configuration.iter_length = reference_path.shape[0]
 
         # compute orientation from resampled reference path
@@ -272,10 +322,30 @@ class Configuration(object):
         configuration.p = eval(vehicle_settings["vehicle_model"])()
         configuration.wheelbase = vehicle_settings['wheelbase']
 
-        configuration.curvilinear_coordinate_system = self.create_curvilinear_coordinate_system(
-            configuration.reference_path)
+        configuration.curvilinear_coordinate_system = self.create_curvilinear_coordinate_system(configuration.reference_path)
 
-        # configuration.vehicle_dynamics = VehicleDynamics(configuration.p)
+        configuration.framework_name = self.settings["general_planning_settings"]["framework_name"]
+        configuration.noised = self.settings["general_planning_settings"]["noised"]
+        configuration.use_case = self.settings["scenario_settings"]["use_case"]
+
+        if configuration.use_case == "collision_avoidance":
+            configuration.static_obstacle = {"position_x": self.scenario.obstacles[0].initial_state.position[0],
+                                             "position_y": self.scenario.obstacles[0].initial_state.position[1],
+                                             "length": self.scenario.obstacles[0].obstacle_shape.length,
+                                             "width": self.scenario.obstacles[0].obstacle_shape.width,
+                                             "orientation": self.scenario.obstacles[0].initial_state.orientation}
+        elif configuration.use_case == "lane_following":
+            # in order to integrate two use cases together, we set some unimportant values about static obstacle in the case of lane_following
+            configuration.static_obstacle = {"position_x": -10.0,
+                                             "position_y": 0.0,
+                                             "length": 0.0,
+                                             "width": 0.0,
+                                             "orientation": 0.0}
+        else:
+            raise ValueError("use_case can only be lane_following and collision_avoidance!")
+
+        # add configuration for weights for penalty
+        configuration.weights_setting = self.settings["weights_setting"]
 
         return configuration
 
@@ -289,10 +359,9 @@ class Configuration(object):
             raise ValueError("<set_reference_point>: reference point of the ego vehicle is unknown: {}".format(
                 reference_point))
 
-    def find_reference_path_and_lanelets_leading_to_goal(self, desired_velocity, delta_t):
+    def find_reference_path_and_desired_velocity(self):
         """
-        Find a reference path (and the corresponding lanelets) to the given goal region. The obtained reference path will be
-        resampled if needed.
+        Find a reference path to the given goal region. The obtained reference path will be clipped and resampled
         """
         assert (self.planning_problem.planning_problem_id in self.settings["vehicle_settings"]), \
             'Cannot find settings for planning problem {}'.format(self.planning_problem.planning_problem_id)
@@ -300,36 +369,50 @@ class Configuration(object):
         vehicle_settings = self.settings["vehicle_settings"][self.planning_problem.planning_problem_id]
 
         candidate_holder = self.route_planner.plan_routes()
-        route = candidate_holder.retrieve_best_route_by_orientation()
-        origin_reference_path = route.reference_path  # origin reference path from route planner
+        # route = candidate_holder.retrieve_best_route_by_orientation()
+        route = candidate_holder.retrieve_first_route()
+
+        # visualize_route(route, draw_route_lanelets=True, draw_reference_path=True)
+
+        # origin reference path coming from route planner
+        origin_reference_path = route.reference_path
+
+        # origin reference path is based on lanelet, which should be clipped from initial to goal position.
+        clipped_reference_path = self.clip_reference_path(origin_reference_path)
+
+        # lanelets lead to goal
         lanelets_leading_to_goal = route.list_ids_lanelets
 
-        # resampling the reference path
-        if vehicle_settings['resampling_reference_path']:
-            reference_path = np.array(chaikins_corner_cutting(origin_reference_path))
-            resampled_path = resample_polyline(reference_path, step=desired_velocity * delta_t)
-        else:
-            resampled_path = origin_reference_path
-        return resampled_path, lanelets_leading_to_goal
+        # compute the length of clipped reference path, used to compute desired velocity
+        length_clipped_path = compute_polyline_length(clipped_reference_path)
 
-    def get_desired_velocity_and_delta_t(self):
-        # goal state configuration
-        if hasattr(self.planning_problem.goal.state_list[0], 'velocity'):
-            if self.planning_problem.goal.state_list[0].velocity.start != 0:
-                desired_velocity = (self.planning_problem.goal.state_list[0].velocity.start
-                                    + self.planning_problem.goal.state_list[0].velocity.end) / 2
-            else:
-                desired_velocity = (self.planning_problem.goal.state_list[0].velocity.start
-                                    + self.planning_problem.goal.state_list[0].velocity.end) / 2
-        else:
-            desired_velocity = self.planning_problem.initial_state.velocity
-
+        # get the sampling time from scenario
         if not hasattr(self.scenario, 'dt'):
-            delta_t = 0.1  # default time step
+            delta_t = 0.1
         else:
             delta_t = self.scenario.dt
 
-        return desired_velocity, delta_t
+        if hasattr(self.planning_problem.goal.state_list[0].time_step, 'end'):
+            time_step_limit = self.planning_problem.goal.state_list[0].time_step.end  # choose the longest time limit to ensure a reasonable solution
+        else:
+            time_step_limit = self.planning_problem.goal.state_list[0].time_step.start
+
+        # use length of clipped reference path and time step limit to calculate desired velocity
+        desired_velocity = length_clipped_path / ((time_step_limit - 1) * delta_t)
+
+        # round up value of the desired velocity
+        if desired_velocity > round(desired_velocity, 4):
+            desired_velocity = round(desired_velocity, 4) + 0.0001
+        else:
+            desired_velocity = round(desired_velocity, 4)
+
+        # resampling the reference path
+        if vehicle_settings['resampling_reference_path']:
+            reference_path = np.array(chaikins_corner_cutting(clipped_reference_path))
+            resampled_path = resample_polyline(reference_path, step=desired_velocity * delta_t)
+        else:
+            resampled_path = clipped_reference_path
+        return origin_reference_path, resampled_path, lanelets_leading_to_goal, desired_velocity, delta_t
 
     @staticmethod
     def create_lanelet_network(lanelet_network: LaneletNetwork, lanelets_leading_to_goal: List[int]) -> LaneletNetwork:
@@ -357,35 +440,61 @@ class Configuration(object):
         return new_lanelet_network
 
     @staticmethod
-    def compute_approximating_circle_radius(ego_length, ego_width) -> Tuple[Union[float, Any], Any]:
-        """
-        From Julia Kabalar
-        Computes parameters of the circle approximation of the ego_vehicle
-
-        :param ego_length: Length of ego vehicle
-        :param ego_width: Width of ego vehicle
-        :return: radius of circle approximation, circle center point distance
-        """
-        assert ego_length >= 0 and ego_width >= 0, 'Invalid vehicle dimensions = {}'.format([ego_length, ego_width])
-
-        if np.isclose(ego_length, 0.0) and np.isclose(ego_width, 0.0):
-            return 0.0, 0.0
-
-        # Divide rectangle into 3 smaller rectangles
-        square_length = ego_length / 3
-
-        # Calculate minimum radius
-        diagonal_square = np.sqrt((square_length / 2) ** 2 + (ego_width / 2) ** 2)
-
-        # Round up value
-        if diagonal_square > round(diagonal_square, 1):
-            approx_radius = round(diagonal_square, 1) + 0.1
-        else:
-            approx_radius = round(diagonal_square, 1)
-
-        return approx_radius, round(square_length * 2, 1)
-
-    @staticmethod
     def create_curvilinear_coordinate_system(reference_path: np.ndarray) -> pycrccosy.CurvilinearCoordinateSystem:
         cosy = pycrccosy.CurvilinearCoordinateSystem(reference_path)
         return cosy
+
+    def clip_reference_path(self, origin_reference_path):
+        """
+        Clip the original reference path from initial and goal position
+        :param origin_reference_path: original reference path coming from route planner
+        :return: clipped reference path, whose first point is the initial position and last point is the goal position
+        """
+        init_position = self.planning_problem.initial_state.position  # ndarray(2,)
+
+        # choose the goal position
+        if hasattr(self.planning_problem.goal.state_list[0], "position"):
+            if not hasattr(self.planning_problem.goal.state_list[0].position, "shapes"):
+                goal_position = self.planning_problem.goal.state_list[0].position.center  # ndarray(2,)
+            else:
+                goal_position = origin_reference_path[-1]  # ndarray(2,)
+                # goal_position = self.planning_problem.goal.state_list[0].position.shapes[0].center  # ndarray(2,)
+        else:
+            goal_position = origin_reference_path[-1]  # ndarray(2,)
+
+        start_index = self.find_closest_point(origin_reference_path, init_position)
+        end_index = self.find_closest_point(origin_reference_path, goal_position)
+
+        # clipping reference depends on the direction of the original reference path
+        if goal_position[0] >= init_position[0]:   # origin reference path is from left towards right
+            diff_init = (origin_reference_path[start_index] - init_position) >= 0
+            diff_goal = (origin_reference_path[end_index] - goal_position) <= 0
+            if diff_init.sum() != 2:  # means this position is right of init_position
+                start_index = start_index + 1
+            if diff_goal.sum() != 2:
+                end_index = end_index - 1
+            clipped_reference_path = np.concatenate((init_position.reshape(1, 2), origin_reference_path[start_index:end_index+1], goal_position.reshape(1, 2)), axis=0)
+        else:  # origin reference path is from right towards left
+            diff_init = (origin_reference_path[start_index] - init_position) <= 0
+            diff_goal = (origin_reference_path[end_index] - goal_position) >= 0
+            if diff_init.sum() != 2:  # means this position is right of init_position
+                start_index = start_index + 1
+            if diff_goal.sum() != 2:
+                end_index = end_index - 1
+            clipped_reference_path = np.concatenate((init_position.reshape(1, 2), origin_reference_path[start_index:end_index + 1], goal_position.reshape(1, 2)), axis=0)
+
+        return clipped_reference_path
+
+    @staticmethod
+    def find_closest_point(path_points, current_point):
+        """
+        Find the index of the closest point in path_points from the current car position
+        :param path_points: a series of points, ndarray(n, 2)
+        :param current_point: current point, ndarray(2,)
+        :return: index of path_points, which holds the closest distance between itself and current point
+        """
+        diff = np.transpose(path_points) - current_point.reshape(2, 1)
+        diff = np.transpose(diff)
+        squared_diff = np.power(diff, 2)
+        squared_dist = squared_diff[:, 0] + squared_diff[:, 1]
+        return np.argmin(squared_dist)
