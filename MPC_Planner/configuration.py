@@ -3,11 +3,9 @@ import casadi as ca
 from typing import Dict, Union, List, Tuple, Any
 import enum
 
+from vehiclemodels.vehicle_parameters import VehicleParameters
 from vehiclemodels.parameters_vehicle2 import parameters_vehicle2
-from vehiclemodels.vehicle_dynamics_ks import vehicle_dynamics_ks
 from vehiclemodels.utils.vehicle_dynamics_ks_cog import vehicle_dynamics_ks_cog
-from vehiclemodels.vehicle_dynamics_st import vehicle_dynamics_st
-from vehiclemodels.vehicle_dynamics_std import vehicle_dynamics_std
 from commonroad_route_planner.route_planner import RoutePlanner
 from commonroad_route_planner.utility.visualization import visualize_route
 
@@ -23,6 +21,20 @@ from commonroad_dc.geometry.util import (chaikins_corner_cutting, resample_polyl
 
 VEHICLE_ID = int
 TIME_IDX = int
+
+
+def find_closest_point(path_points, current_point):
+    """
+    Find the index of the closest point in path_points from the current car position
+    :param path_points: a series of points, ndarray(n, 2)
+    :param current_point: current point, ndarray(2,)
+    :return: index of path_points, which holds the closest distance between itself and current point
+    """
+    diff = np.transpose(path_points) - current_point.reshape(2, 1)
+    diff = np.transpose(diff)
+    squared_diff = np.power(diff, 2)
+    squared_dist = squared_diff[:, 0] + squared_diff[:, 1]
+    return np.argmin(squared_dist)
 
 
 def compute_approximating_circle_radius(ego_length, ego_width) -> Tuple[Union[float, Any], Any]:
@@ -91,22 +103,126 @@ class ReferencePoint(enum.Enum):
     REAR = "rear"
 
 
-class PlanningConfigurationVehicle:
-    """ Class which holds all necessary vehicle-specific parameters for the
-    trajectory planning."""
+class PlanningConfiguration:
+    """ Class which holds all necessary parameters for vehicles and planning for MPC planner."""
 
     def __init__(self):
         """
         Default settings.
         """
-        self.vehicle_id = -1
-        self.vehicle_model = "parameters_vehicle2"
-        self.desired_speed = 0.0
-        self.wheelbase = 3.0
-        self._curvilinear_coordinate_system = None
-        self._reference_path = None
-        self._reference_point = ReferencePoint.REAR
         self._lanelet_network = None
+        self._origin_reference_path = None
+        self._reference_path = None
+        self._desired_velocity = 0.0
+        self._delta_t = 0.1
+        self._iter_length = 0
+        self._orientation = None
+        self._predict_horizon = 0
+        self._reference_point = ReferencePoint.REAR
+        self._vehicle_id = -1
+        self._p = None
+        self._wheelbase = 3.0
+        self._curvilinear_coordinate_system = None
+        self._framework_name = "casadi"
+        self._noised = True
+        self._use_case = "lane_following"
+        self._static_obstacle = None
+        self._weights_setting = None
+
+    @property
+    def lanelet_network(self) -> Union[None, LaneletNetwork]:
+        """ The part of the lanelet network of the scenario, the vehicle is allowed or should drive on."""
+        return self._lanelet_network
+
+    @lanelet_network.setter
+    def lanelet_network(self, lanelet_network: LaneletNetwork):
+        assert isinstance(lanelet_network, LaneletNetwork), '<PlanConfiguration/lanelet_network>: argument ' \
+                                                            'lanelet_network of wrong type. Expected type: %s. ' \
+                                                            'Got type: %s.' % (LaneletNetwork, type(lanelet_network))
+        self._lanelet_network = lanelet_network
+
+    @property
+    def origin_reference_path(self):
+        """ Original reference path is coming from route planner. The original reference path must be given as polyline."""
+        return self._origin_reference_path
+
+    @origin_reference_path.setter
+    def origin_reference_path(self, origin_reference_path: np.ndarray):
+        assert isinstance(origin_reference_path, np.ndarray) and origin_reference_path.ndim == 2 \
+               and len(origin_reference_path) > 1 and len(origin_reference_path[0, :]) == 2, \
+               '<PlanConfiguration/reference_path>: Provided reference is not valid. reference = {}'. \
+               format(origin_reference_path)
+        self._origin_reference_path = origin_reference_path
+
+    @property
+    def reference_path(self):
+        """ Clipped and resampled reference path. The reference path must be given as polyline."""
+        return self._reference_path
+
+    @reference_path.setter
+    def reference_path(self, reference_path: np.ndarray):
+        assert isinstance(reference_path, np.ndarray) and reference_path.ndim == 2 \
+               and len(reference_path) > 1 and len(reference_path[0, :]) == 2, \
+               '<PlanConfiguration/reference_path>: Provided reference is not valid. reference = {}'. \
+               format(reference_path)
+        self._reference_path = reference_path
+
+    @property
+    def desired_velocity(self) -> float:
+        """ Desired velocity of the vehicle for trajectory planning."""
+        return self._desired_velocity
+
+    @desired_velocity.setter
+    def desired_velocity(self, desired_velocity: float):
+        assert isinstance(desired_velocity, float), '<PlanConfiguration/desired_velocity> Expected type float; ' \
+                                                 'Got type %s instead.' % (type(desired_velocity))
+        self._desired_velocity = desired_velocity
+
+    @property
+    def iter_length(self) -> int:
+        """ Iteration length of MPC planner."""
+        return self._iter_length
+
+    @iter_length.setter
+    def iter_length(self, iter_length: int):
+        assert isinstance(iter_length, int), '<PlanConfiguration/iter_length> Expected type float; ' \
+                                                 'Got type %s instead.' % (type(iter_length))
+        self._iter_length = iter_length
+
+    @property
+    def orientation(self):
+        """ Orientation for each point in clipped and resampled reference path."""
+        return self._orientation
+
+    @orientation.setter
+    def orientation(self, orientation: np.ndarray):
+        assert isinstance(orientation, np.ndarray) and orientation.ndim == 1 \
+               and len(orientation) > 1, \
+               '<PlanConfiguration/orientation>: Provided orientation is not valid. orientation = {}'. \
+               format(orientation)
+        self._orientation = orientation
+
+    @property
+    def predict_horizon(self) -> int:
+        """ Prediction horizon of MPC planner."""
+        return self._predict_horizon
+
+    @predict_horizon.setter
+    def predict_horizon(self, predict_horizon: int):
+        assert isinstance(predict_horizon, int), '<PlanConfiguration/predict_horizon> Expected type float; ' \
+                                                 'Got type %s instead.' % (type(predict_horizon))
+        self._predict_horizon = predict_horizon
+
+    @property
+    def reference_point(self) -> ReferencePoint:
+        return self._reference_point
+
+    @reference_point.setter
+    def reference_point(self, reference_point: ReferencePoint):
+        assert isinstance(reference_point, ReferencePoint), \
+            '<ReachSetConfiguration/reference_point>: argument reference_point of wrong type. Expected type: %s. ' \
+            'Got type: %s' % (ReferencePoint, type(reference_point))
+        self._reference_point = reference_point
 
     @property
     def vehicle_id(self) -> VEHICLE_ID:
@@ -120,26 +236,15 @@ class PlanningConfigurationVehicle:
         self._vehicle_id = vehicle_id
 
     @property
-    def vehicle_model(self) -> str:
-        """Vehicle model, e.g. parameters_vehicle2"""
-        return self._vehicle_model
+    def p(self) -> VehicleParameters():
+        """Parameters of vehicle, e.g. length, width, maximal velocity etc."""
+        return self._p
 
-    @vehicle_model.setter
-    def vehicle_model(self, vehicle_model: str):
-        assert (type(vehicle_model) is str), '<PlanConfiguration/vehicle_id> Expected type int; ' \
-                                                 'Got type %s instead.' % (type(vehicle_model))
-        self._vehicle_model = vehicle_model
-
-    @property
-    def desired_speed(self) -> float:
-        """ Desired speed of the vehicle for trajectory planning."""
-        return self._desired_speed
-
-    @desired_speed.setter
-    def desired_speed(self, desired_speed: float):
-        assert isinstance(desired_speed, float), '<PlanConfiguration/desired_speed> Expected type float; ' \
-                                                 'Got type %s instead.' % (type(desired_speed))
-        self._desired_speed = desired_speed
+    @p.setter
+    def p(self, p: VehicleParameters):
+        assert (type(p) is VehicleParameters), '<PlanConfiguration/p> Expected type int; ' \
+                                                 'Got type %s instead.' % (type(p))
+        self._p = p
 
     @property
     def wheelbase(self) -> float:
@@ -172,41 +277,63 @@ class PlanningConfigurationVehicle:
         self._curvilinear_coordinate_system = curvilinear_coordinate_system
 
     @property
-    def reference_path(self):
-        """ Reference path of the vehicle for the generation of a curvilinear coordinate system or trajectory
-        planning. The reference path must be given as polyline."""
-        return self._reference_path
+    def framework_name(self) -> str:
+        """Framework name used to solve MPC problem, casadi or forcespro"""
+        return self._framework_name
 
-    @reference_path.setter
-    def reference_path(self, reference_path: np.ndarray):
-        assert isinstance(reference_path, np.ndarray) and reference_path.ndim == 2 \
-               and len(reference_path) > 1 and len(reference_path[0, :]) == 2, \
-               '<PlanConfiguration/reference_path>: Provided reference is not valid. reference = {}'. \
-               format(reference_path)
-        self._reference_path = reference_path
-
-    @property
-    def reference_point(self) -> ReferencePoint:
-        return self._reference_point
-
-    @reference_point.setter
-    def reference_point(self, reference_point: ReferencePoint):
-        assert isinstance(reference_point, ReferencePoint), \
-            '<ReachSetConfiguration/reference_point>: argument reference_point of wrong type. Expected type: %s. ' \
-            'Got type: %s' % (ReferencePoint, type(reference_point))
-        self._reference_point = reference_point
+    @framework_name.setter
+    def framework_name(self, framework_name: str):
+        assert (type(framework_name) is str), '<PlanConfiguration/framework_name> ' \
+                                           'Expected type string; Got type %s instead.' % (type(framework_name))
+        assert (framework_name == "casadi" or framework_name == "forcespro"), '<PlanConfiguration/framework_name> '\
+                                                                              'Expected casadi or forcespro; Got %s instead.' % framework_name
+        self._framework_name = framework_name
 
     @property
-    def lanelet_network(self) -> Union[None, LaneletNetwork]:
-        """ The part of the lanelet network of the scenario, the vehicle is allowed or should drive on."""
-        return self._lanelet_network
+    def noised(self) -> bool:
+        """Used to check if the noise should be considered onto control inputs"""
+        return self._noised
 
-    @lanelet_network.setter
-    def lanelet_network(self, lanelet_network: LaneletNetwork):
-        assert isinstance(lanelet_network, LaneletNetwork), '<PlanConfiguration/lanelet_network>: argument ' \
-                                                            'lanelet_network of wrong type. Expected type: %s. ' \
-                                                            'Got type: %s.' % (LaneletNetwork, type(lanelet_network))
-        self._lanelet_network = lanelet_network
+    @noised.setter
+    def noised(self, noised: bool):
+        assert (type(noised) is bool), '<PlanConfiguration/noised> ' \
+                                              'Expected type bool; Got type %s instead.' % (type(noised))
+        self._noised = noised
+
+    @property
+    def use_case(self) -> str:
+        """Use case for this scenario, collision_avoidance or lane_following"""
+        return self._use_case
+
+    @use_case.setter
+    def use_case(self, use_case: str):
+        assert (type(use_case) is str), '<PlanConfiguration/use_case> ' \
+                                           'Expected type string; Got type %s instead.' % (type(use_case))
+        assert (use_case == "collision_avoidance" or use_case == "lane_following"), '<PlanConfiguration/use_case> '\
+                                                                                    'Expected collision_avoidance or lane_following; Got %s instead.' % use_case
+        self._use_case = use_case
+
+    @property
+    def static_obstacle(self) -> dict:
+        """Information about static_obstacle, stored in a dictionary"""
+        return self._static_obstacle
+
+    @static_obstacle.setter
+    def static_obstacle(self, static_obstacle: Dict):
+        assert (type(static_obstacle) is dict), '<PlanConfiguration/static_obstacle> ' \
+                                              'Expected type Dict; Got type %s instead.' % (type(static_obstacle))
+        self._static_obstacle = static_obstacle
+
+    @property
+    def weights_setting(self) -> dict:
+        """Weights for penalty of different terms, stored in a dictionary"""
+        return self._weights_setting
+
+    @weights_setting.setter
+    def weights_setting(self, weights_setting: Dict):
+        assert (type(weights_setting) is dict), '<PlanConfiguration/weights_setting> ' \
+                                                'Expected type Dict; Got type %s instead.' % (type(weights_setting))
+        self._weights_setting = weights_setting
 
 
 class VehicleDynamics(object):
@@ -296,38 +423,47 @@ class Configuration(object):
         vehicle_settings = self.settings["vehicle_settings"][self.planning_problem.planning_problem_id]
 
         # add some attributes to configuration
-        configuration = PlanningConfigurationVehicle()
+        configuration = PlanningConfiguration()
 
         # add reference path
         origin_reference_path, reference_path, lanelets_leading_to_goal, desired_velocity, delta_t = self.find_reference_path_and_desired_velocity()
-        configuration.lanelet_network = self.create_lanelet_network(self.scenario.lanelet_network, lanelets_leading_to_goal)  # lanelet network
-        configuration.origin_reference_path = origin_reference_path  # original reference path coming from route planner
-        configuration.reference_path = np.array(reference_path)  # clipped and resampled reference path, which would be used in optimizer.
+        # add lanelet network
+        configuration.lanelet_network = self.create_lanelet_network(self.scenario.lanelet_network, lanelets_leading_to_goal)
+        # add original reference path coming from route planner
+        configuration.origin_reference_path = origin_reference_path
+        # add clipped and resampled reference path, which would be used in optimizer.
+        configuration.reference_path = np.array(reference_path)
 
-        configuration.desired_velocity = desired_velocity  #
+        # add desired velocity computed from length of clipped reference path and time limit
+        configuration.desired_velocity = desired_velocity
+        # add sampling time from scenario
         configuration.delta_t = delta_t
+        # add iteration length
         configuration.iter_length = reference_path.shape[0]
 
-        # compute orientation from resampled reference path
+        # compute and orientation from clipped and resampled reference path
         orientation = compute_orientation_from_polyline(reference_path)
         configuration.orientation = orientation
 
         # add predict horizon
         configuration.predict_horizon = self.settings["general_planning_settings"]["predict_horizon"]
-
+        # add reference point: rear
         if 'reference_point' in vehicle_settings:
             configuration.reference_point = self.set_reference_point(vehicle_settings['reference_point'])
-
+        # add planning problem id
         configuration.vehicle_id = self.planning_problem.planning_problem_id
-        configuration.p = eval(vehicle_settings["vehicle_model"])()
+        # add parameters of vehicle
+        configuration.p = eval(vehicle_settings["vehicle_model"])()  # parameters_vehicle2
+        # add wheelbase value:
         configuration.wheelbase = vehicle_settings['wheelbase']
-
+        # add curvilinear coordinate system
         configuration.curvilinear_coordinate_system = self.create_curvilinear_coordinate_system(configuration.reference_path)
-
+        # add framework name: casadi or forcespro
         configuration.framework_name = self.settings["general_planning_settings"]["framework_name"]
+        # add config about if consider noise on the control input in optimizer.
         configuration.noised = self.settings["general_planning_settings"]["noised"]
+        # add use case: collision_avoidance or lane_following
         configuration.use_case = self.settings["scenario_settings"]["use_case"]
-
         if configuration.use_case == "collision_avoidance":
             configuration.static_obstacle = {"position_x": self.scenario.obstacles[0].initial_state.position[0],
                                              "position_y": self.scenario.obstacles[0].initial_state.position[1],
@@ -336,15 +472,14 @@ class Configuration(object):
                                              "orientation": self.scenario.obstacles[0].initial_state.orientation}
         elif configuration.use_case == "lane_following":
             # in order to integrate two use cases together, we set some unimportant values about static obstacle in the case of lane_following
-            configuration.static_obstacle = {"position_x": -10.0,
+            configuration.static_obstacle = {"position_x": -100.0,
                                              "position_y": 0.0,
                                              "length": 0.0,
                                              "width": 0.0,
                                              "orientation": 0.0}
         else:
             raise ValueError("use_case can only be lane_following and collision_avoidance!")
-
-        # add configuration for weights for penalty
+        # add configuration for weights of penalty
         configuration.weights_setting = self.settings["weights_setting"]
 
         return configuration
@@ -462,8 +597,8 @@ class Configuration(object):
         else:
             goal_position = origin_reference_path[-1]  # ndarray(2,)
 
-        start_index = self.find_closest_point(origin_reference_path, init_position)
-        end_index = self.find_closest_point(origin_reference_path, goal_position)
+        start_index = find_closest_point(origin_reference_path, init_position)
+        end_index = find_closest_point(origin_reference_path, goal_position)
 
         # clipping reference depends on the direction of the original reference path
         if goal_position[0] >= init_position[0]:   # origin reference path is from left towards right
@@ -485,16 +620,3 @@ class Configuration(object):
 
         return clipped_reference_path
 
-    @staticmethod
-    def find_closest_point(path_points, current_point):
-        """
-        Find the index of the closest point in path_points from the current car position
-        :param path_points: a series of points, ndarray(n, 2)
-        :param current_point: current point, ndarray(2,)
-        :return: index of path_points, which holds the closest distance between itself and current point
-        """
-        diff = np.transpose(path_points) - current_point.reshape(2, 1)
-        diff = np.transpose(diff)
-        squared_diff = np.power(diff, 2)
-        squared_dist = squared_diff[:, 0] + squared_diff[:, 1]
-        return np.argmin(squared_dist)
