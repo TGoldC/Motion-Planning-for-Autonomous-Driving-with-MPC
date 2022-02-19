@@ -15,6 +15,7 @@ The test module and test results are in `test` folder. `test_mpc_planner.py` is 
 
 ![image](./IMG/Framework of MPC Planner.png)
 
+
 ## The required Python dependencies
 
 - matplotlib>=3.4.3  
