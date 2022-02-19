@@ -73,8 +73,8 @@ static void mdlInitializeSizes(SimStruct *S)
     ssSetNumContStates(S, 0);
     ssSetNumDiscStates(S, 0);
 
-	/* initialize input ports - there are 4 in total */
-    if (!ssSetNumInputPorts(S, 4)) return;
+	/* initialize input ports - there are 6 in total */
+    if (!ssSetNumInputPorts(S, 6)) return;
     	
 	/* Input Port 0 */
     ssSetInputPortMatrixDimensions(S,  0, 5, 1);
@@ -103,6 +103,20 @@ static void mdlInitializeSizes(SimStruct *S)
     ssSetInputPortComplexSignal(S, 3, COMPLEX_NO); /* no complex signals suppported */
     ssSetInputPortDirectFeedThrough(S, 3, 1); /* Feedthrough enabled */
     ssSetInputPortRequiredContiguous(S, 3, 1); /*direct input signal access*/
+	
+	/* Input Port 4 */
+    ssSetInputPortMatrixDimensions(S,  4, 1, 1);
+    ssSetInputPortDataType(S, 4, SS_DOUBLE);
+    ssSetInputPortComplexSignal(S, 4, COMPLEX_NO); /* no complex signals suppported */
+    ssSetInputPortDirectFeedThrough(S, 4, 1); /* Feedthrough enabled */
+    ssSetInputPortRequiredContiguous(S, 4, 1); /*direct input signal access*/
+	
+	/* Input Port 5 */
+    ssSetInputPortMatrixDimensions(S,  5, 1, 1);
+    ssSetInputPortDataType(S, 5, SS_DOUBLE);
+    ssSetInputPortComplexSignal(S, 5, COMPLEX_NO); /* no complex signals suppported */
+    ssSetInputPortDirectFeedThrough(S, 5, 1); /* Feedthrough enabled */
+    ssSetInputPortRequiredContiguous(S, 5, 1); /*direct input signal access*/
  
 
 
@@ -252,7 +266,9 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 	const real_T *xinit = (const real_T*) ssGetInputPortSignal(S,0);
 	const real_T *x0 = (const real_T*) ssGetInputPortSignal(S,1);
 	const real_T *all_parameters = (const real_T*) ssGetInputPortSignal(S,2);
-	const FORCESNLPsolver_int *reinitialize = (const FORCESNLPsolver_int*) ssGetInputPortSignal(S,3);
+	const FORCESNLPsolver_float *ToleranceInequalities = (const FORCESNLPsolver_float*) ssGetInputPortSignal(S,3);
+	const FORCESNLPsolver_float *ToleranceEqualities = (const FORCESNLPsolver_float*) ssGetInputPortSignal(S,4);
+	const FORCESNLPsolver_int *reinitialize = (const FORCESNLPsolver_int*) ssGetInputPortSignal(S,5);
 	
     real_T *x01 = (real_T*) ssGetOutputPortSignal(S,0);
 	real_T *x02 = (real_T*) ssGetOutputPortSignal(S,1);
@@ -291,6 +307,10 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 	{ 
 		params.all_parameters[i] = (double) all_parameters[i]; 
 	}
+
+	params.ToleranceInequalities = *ToleranceInequalities;
+
+	params.ToleranceEqualities = *ToleranceEqualities;
 
 	params.reinitialize = *reinitialize;
 

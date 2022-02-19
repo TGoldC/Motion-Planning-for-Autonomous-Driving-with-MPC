@@ -59,6 +59,31 @@ void copyMValueToC_double(double * src, double * dest)
 
 /* copy functions */
 
+void copyCArrayToM_FORCESNLPsolver_float(FORCESNLPsolver_float *src, double *dest, solver_int32_default dim) 
+{
+    solver_int32_default i;
+    for( i = 0; i < dim; i++ ) 
+    {
+        *dest++ = (double)*src++;
+    }
+}
+
+void copyMArrayToC_FORCESNLPsolver_float(double *src, FORCESNLPsolver_float *dest, solver_int32_default dim) 
+{
+    solver_int32_default i;
+    for( i = 0; i < dim; i++ ) 
+    {
+        *dest++ = (FORCESNLPsolver_float) (*src++) ;
+    }
+}
+
+void copyMValueToC_FORCESNLPsolver_float(double * src, FORCESNLPsolver_float * dest)
+{
+	*dest = (FORCESNLPsolver_float) *src;
+}
+
+/* copy functions */
+
 void copyCArrayToM_FORCESNLPsolver_int(FORCESNLPsolver_int *src, double *dest, solver_int32_default dim) 
 {
     solver_int32_default i;
@@ -188,6 +213,22 @@ void mexFunction( solver_int32_default nlhs, mxArray *plhs[], solver_int32_defau
 		copyMArrayToC_double(mxGetPr(par), params.all_parameters,100);
 
 	}
+	par = mxGetField(PARAMS, 0, "ToleranceInequalities");
+	if ( (par != NULL) && (mxGetN(par) != 0) && (mxGetM(par) != 0) )
+	{
+		copyMValueToC_FORCESNLPsolver_float(mxGetPr(par), &params.ToleranceInequalities);
+
+	}
+
+
+	par = mxGetField(PARAMS, 0, "ToleranceEqualities");
+	if ( (par != NULL) && (mxGetN(par) != 0) && (mxGetM(par) != 0) )
+	{
+		copyMValueToC_FORCESNLPsolver_float(mxGetPr(par), &params.ToleranceEqualities);
+
+	}
+
+
 	par = mxGetField(PARAMS, 0, "reinitialize");
 	if ( (par != NULL) && (mxGetN(par) != 0) && (mxGetM(par) != 0) )
 	{

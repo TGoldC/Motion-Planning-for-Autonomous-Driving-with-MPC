@@ -10,3 +10,4 @@
 # ignore file
 *.log
 *.forces
+/MPC_Planner/comment_tool.sh

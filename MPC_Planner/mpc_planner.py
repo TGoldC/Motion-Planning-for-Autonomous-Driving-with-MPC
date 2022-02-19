@@ -14,6 +14,10 @@ import sys
 sys.path.append("..")
 
 
+def save_data(x, u, solve_time, path_to_save):
+    np.save(path_to_save + 'save_data', x, u, solve_time)
+
+
 class MPCPlanner(object):
     def __init__(self, scenario, planning_problem, configuration, predict_horizon):
         self.scenario = scenario
@@ -170,6 +174,11 @@ class MPCPlanner(object):
         self.plot_control_inputs(u, path_2D_figures)
         self.plot_solve_time(solve_time, path_2D_figures)
         self.plot_path(x, u, path_2D_figures)
+
+        # Compute Root-mean-square deviation of the x-position and y-position for lane_following use case
+        if self.configuration.use_case == "lane_following":
+            self.compute_rmsd(x, path_2D_figures)
+
         return ego_vehicle_trajectory, ego_vehicle
 
     def plot_deviation_euclidean_dis(self, x, save_path):
@@ -185,6 +194,7 @@ class MPCPlanner(object):
         deviation_x = nearest_points[:, 0] - x[:, 0]
         deviation_y = nearest_points[:, 1] - x[:, 1]
         deviation = np.sqrt(deviation_x ** 2 + deviation_y ** 2)
+        np.savetxt(save_path+'deviation.txt', deviation)
 
         plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t, deviation)
         plt.title('deviation with reference path ')
@@ -198,23 +208,21 @@ class MPCPlanner(object):
         """
         Plot control inputs over the time
         """
+        np.savetxt(save_path+'control inputs.txt', u)
         plt.figure()
         # print("control inputs: ", repr(u))
         # control_inputs_unnoised = np.array()
         plt.subplot(2, 1, 1)
-        plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t,  np.rad2deg(u[:, 0]), color="b", label="noised")
+        plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t,  np.rad2deg(u[:, 0]), color="b")
         # plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t, np.rad2deg(control_inputs_unnoised[:, 0]), color="g", label="unnoised")
-        plt.legend(loc='upper right')
-        plt.legend(loc='upper right')
         plt.title('steering velocity')
         plt.xlabel('time [s]')
         plt.ylabel('delta_v [deg/s]')
         plt.subplots_adjust(hspace=0.8)
 
         plt.subplot(2, 1, 2)
-        plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t, u[:, 1], color="b", label="noised")
+        plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t, u[:, 1], color="b")
         # plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t, control_inputs_unnoised[:, 1], color="g", label="unnoised")
-        plt.legend()
         plt.title('longitudinal acceleration')
         plt.xlabel('time [s]')
         plt.ylabel('long. acc. [m/s2]')
@@ -226,11 +234,11 @@ class MPCPlanner(object):
         """
         Plot solve time over the time
         """
+        np.savetxt(save_path+'solve time.txt', solve_time)
         plt.figure()
         # print("solve_time", repr(solve_time))
-        plt.plot(np.arange(self.configuration.iter_length), solve_time*1000,  color='b', label='forcespro computation time')
+        plt.plot(np.arange(self.configuration.iter_length), solve_time*1000,  color='b')
         # plt.plot(np.arange(self.configuration.iter_length), solve_time_casadi * 1000, color='g', label='casadi computation time')
-        plt.legend()
         plt.title('Computation time over iteration')
         plt.xlabel('iteration')
         plt.ylabel('Computation time [ms]')
@@ -242,6 +250,7 @@ class MPCPlanner(object):
         """
         Plot the reference path and planned trajectory in one figure to show the performance, respectively in x and y direction
         """
+        np.savetxt(save_path + 'planned states.txt', x)
         plt.figure()
 
         plt.subplot(2, 1, 1)
@@ -258,8 +267,8 @@ class MPCPlanner(object):
         plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t, self.configuration.reference_path[:, 1], color='red', linestyle="--", label='reference path')
         plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t, x[:, 1], color='green', label='MPC planned path')
         # plt.plot(np.arange(self.configuration.iter_length) * self.configuration.delta_t, path_without_noise_y[:-1], color='blue', label='MPC planned path without noise')
-        plt.title('Performance in y-direction')
         plt.legend()
+        plt.title('Performance in y-direction')
         plt.xlabel('time [s]')
         plt.ylabel('y-position [m]')
 
@@ -267,7 +276,7 @@ class MPCPlanner(object):
         plt.savefig(save_path + "2D_plot_{}_{}_{}_performance".format(self.configuration.framework_name, self.scenario.scenario_id, self.configuration.use_case))
         plt.show()
 
-    def compute_rmsd(self, x):
+    def compute_rmsd(self, x, path_to_save):
         """
         Compute Root-mean-square deviation of the x-position and y-position for lane_following use case
         """
@@ -278,6 +287,7 @@ class MPCPlanner(object):
             sum_y += (self.configuration.reference_path[i, 1] - x[i, 1]) ** 2
         rmsd_x = ca.sqrt(sum_x / (self.configuration.iter_length - 1))
         rmsd_y = ca.sqrt(sum_y / (self.configuration.iter_length - 1))
+        np.savetxt(path_to_save + 'RMSD.txt', ca.vertcat(rmsd_x, rmsd_y))
         print('RMSD of x-position: %s' % rmsd_x)
         print('RMSD of y-position: %s' % rmsd_y)
 
@@ -297,10 +307,6 @@ class MPCPlanner(object):
 
         # Use optimizer to solve MPC problem
         final_states, final_control_inputs, final_solve_time = optimizer.optimize()
-
-        # Compute Root-mean-square deviation of the x-position and y-position for lane_following use case
-        if self.configuration.use_case == "lane_following":
-            self.compute_rmsd(final_states)
 
         # plot animation and 2D figures
         ego_vehicle_trajectory, ego_vehicle = self.plot_and_create_gif(final_states, final_control_inputs, final_solve_time)

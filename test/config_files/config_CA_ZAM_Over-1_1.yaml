@@ -18,10 +18,33 @@ vehicle_settings:
         resampling_reference_path: True  # resample the reference path
 
 weights_setting:
+    # difficult to use same weights for collision avoidance regarding casadi and forcespro
+    # please manually comment out following weight according to framework, which you choose above.
+
+    # forcespro weights
+#    weight_x: 2 # weights for penalty of x-axis position  2.3
+#    weight_y: 2 # weights for penalty of y-axis position  2.3
+#    weight_steering_angle: 50  # weights for penalty of steering angle  300
+#    weight_velocity: 0.1  # weights for penalty of velocity  0.1
+#    weight_heading_angle: 5 # weights for penalty of heading angle  5
+#    weight_velocity_steering_angle: 2  # weights for penalty of first input: velocity of steering angle  0.8
+#    weight_long_acceleration: 0.2  # weights for penalty of first input: longitudinal acceleration  0.8
+#    weight_x_terminate: 4 # weights for penalty of x-axis position for terminate state
+#    weight_y_terminate: 4 # weights for penalty of y-axis position for terminate state
+#    weight_steering_angle_terminate: 100  # weights for penalty of steering angle for terminate state
+#    weight_velocity_terminate: 0.2  # weights for penalty of velocity for terminate state
+#    weight_heading_angle_terminate: 10  # weights for penalty of heading angle for terminate state
+
+    # casadi weights
     weight_x: 2.3 # weights for penalty of x-axis position  2.3
     weight_y: 2.3 # weights for penalty of y-axis position  2.3
-    weight_steering_angle: 300  # weights for penalty of steering angle  300
+    weight_steering_angle: 500  # weights for penalty of steering angle  300
     weight_velocity: 0.1  # weights for penalty of velocity  0.1
-    weight_heading_angle: 5  # weights for penalty of heading angle  5
+    weight_heading_angle: 160  # weights for penalty of heading angle  5
     weight_velocity_steering_angle: 0.8  # weights for penalty of first input: velocity of steering angle  0.8
     weight_long_acceleration: 0.8  # weights for penalty of first input: longitudinal acceleration  0.8
+    weight_x_terminate: 80 # weights for penalty of x-axis position for terminate state
+    weight_y_terminate: 80 # weights for penalty of y-axis position for terminate state
+    weight_steering_angle_terminate: 100  # weights for penalty of steering angle for terminate state
+    weight_velocity_terminate: 0.01  # weights for penalty of velocity for terminate state
+    weight_heading_angle_terminate: 110  # weights for penalty of heading angle for terminate state

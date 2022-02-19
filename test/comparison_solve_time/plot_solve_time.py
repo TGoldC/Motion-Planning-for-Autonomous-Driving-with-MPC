@@ -1,0 +1,40 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+solver_time_forcespro_ZAM_LF = np.loadtxt("../2D_plots_forcespro_ZAM_Over-1_1_lane_following/solve time.txt")
+solver_time_casadi_ZAM_LF = np.loadtxt("../2D_plots_casadi_ZAM_Over-1_1_lane_following/solve time.txt")
+solver_time_forcespro_ZAM_CA = np.loadtxt("../2D_plots_forcespro_ZAM_Over-1_1_collision_avoidance/solve time.txt")
+solver_time_casadi_ZAM_CA = np.loadtxt("../2D_plots_casadi_ZAM_Over-1_1_collision_avoidance/solve time.txt")
+solver_time_forcespro_USA_LF = np.loadtxt("../2D_plots_forcespro_USA_Lanker-2_18_T-1_lane_following/solve time.txt")
+solver_time_casadi_USA_LF = np.loadtxt("../2D_plots_casadi_USA_Lanker-2_18_T-1_lane_following/solve time.txt")
+
+plt.figure()
+plt.plot(np.arange(30), solver_time_forcespro_ZAM_LF*1000,  color='b', label="Forcespro computation time")
+plt.plot(np.arange(30), solver_time_casadi_ZAM_LF * 1000, color='g', label='CasADi computation time')
+plt.legend()
+plt.title('Computation time over iteration of lane following in ZAM_Over-1_1')
+plt.xlabel('iteration')
+plt.ylabel('Computation time [ms]')
+plt.savefig("comparison solve time LF ZAM")
+plt.show()
+
+plt.figure()
+plt.plot(np.arange(30), solver_time_forcespro_ZAM_CA*1000,  color='b', label="Forcespro computation time")
+plt.plot(np.arange(30), solver_time_casadi_ZAM_CA * 1000, color='g', label='CasADi computation time')
+plt.legend()
+plt.title('Computation time over iteration of collision avoidance in ZAM_Over-1_1')
+plt.xlabel('iteration')
+plt.ylabel('Computation time [ms]')
+plt.savefig("comparison solve time CA ZAM")
+plt.show()
+
+plt.figure()
+plt.plot(np.arange(70), solver_time_forcespro_USA_LF*1000,  color='b', label="Forcespro computation time")
+plt.plot(np.arange(70), solver_time_casadi_USA_LF * 1000, color='g', label='CasADi computation time')
+plt.legend()
+plt.title('Computation time over iteration of lane following in USA_Lanker-2_18_T-1')
+plt.xlabel('iteration')
+plt.ylabel('Computation time [ms]')
+plt.savefig("comparison solve time LF USA")
+
+plt.show()

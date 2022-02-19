@@ -429,6 +429,8 @@ class Configuration(object):
         origin_reference_path, reference_path, lanelets_leading_to_goal, desired_velocity, delta_t = self.find_reference_path_and_desired_velocity()
         # add lanelet network
         configuration.lanelet_network = self.create_lanelet_network(self.scenario.lanelet_network, lanelets_leading_to_goal)
+        configuration.left_road_boundary = self.scenario.lanelet_network.lanelets[1].right_vertices  # array (201,2)
+        configuration.right_road_boundary = self.scenario.lanelet_network.lanelets[0].right_vertices  # array (201, 2)
         # add original reference path coming from route planner
         configuration.origin_reference_path = origin_reference_path
         # add clipped and resampled reference path, which would be used in optimizer.
@@ -462,6 +464,8 @@ class Configuration(object):
         configuration.framework_name = self.settings["general_planning_settings"]["framework_name"]
         # add config about if consider noise on the control input in optimizer.
         configuration.noised = self.settings["general_planning_settings"]["noised"]
+        # add configuration for weights of penalty
+        configuration.weights_setting = self.settings["weights_setting"]
         # add use case: collision_avoidance or lane_following
         configuration.use_case = self.settings["scenario_settings"]["use_case"]
         if configuration.use_case == "collision_avoidance":
@@ -479,8 +483,6 @@ class Configuration(object):
                                              "orientation": 0.0}
         else:
             raise ValueError("use_case can only be lane_following and collision_avoidance!")
-        # add configuration for weights of penalty
-        configuration.weights_setting = self.settings["weights_setting"]
 
         return configuration
 

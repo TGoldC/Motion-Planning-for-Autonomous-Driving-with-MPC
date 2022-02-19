@@ -13,6 +13,8 @@ params = \
 [("xinit"               , "dense" , ""               , ctypes.c_double, numpy.float64, (  5,   1),    5),
  ("x0"                  , "dense" , ""               , ctypes.c_double, numpy.float64, ( 70,   1),   70),
  ("all_parameters"      , "dense" , ""               , ctypes.c_double, numpy.float64, (100,   1),  100),
+ ("ToleranceInequalities", ""      , "FORCESNLPsolver_float", ctypes.c_double, numpy.float64, (  0,   1),    1),
+ ("ToleranceEqualities" , ""      , "FORCESNLPsolver_float", ctypes.c_double, numpy.float64, (  0,   1),    1),
  ("reinitialize"        , ""      , "FORCESNLPsolver_int", ctypes.c_int   , numpy.int32  , (  0,   1),    1)]
 
 # Output                | Type    | Scalar type      | Ctypes type    | Numpy type   | Shape     | Len
@@ -41,14 +43,14 @@ info = \
 # Dynamics dimensions
 #   nvar    |   neq   |   dimh    |   dimp    |   diml    |   dimu    |   dimhl   |   dimhu    
 dynamics_dims = [
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0), 
-	(7, 5, 9, 10, 4, 4, 9, 0)
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1), 
+	(7, 5, 10, 10, 4, 4, 10, 1)
 ]

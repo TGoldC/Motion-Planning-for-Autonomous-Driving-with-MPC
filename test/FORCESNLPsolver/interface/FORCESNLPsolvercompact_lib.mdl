@@ -60,13 +60,13 @@ Model {
       }
     }
   }
-  Created		  "2/14/2022 4:39:53 PM"
+  Created		  "2/18/2022 10:59:55 PM"
   Creator		  "embotech AG"
   UpdateHistory		  "UpdateHistoryNever"
   ModifiedByFormat	  "%<Auto>"
   LastModifiedBy	  "embotech AG"
   ModifiedDateFormat	  "%<Auto>"
-  LastModifiedDate	  "2/14/2022 4:39:53 PM"
+  LastModifiedDate	  "2/18/2022 10:59:55 PM"
   RTWModifiedTimeStamp	  315310195
   ModelVersionFormat	  "1.%<AutoIncrement:2>"
   ConfigurationManager	  "None"
@@ -767,7 +767,7 @@ Model {
       BlockType		      S-Function
       Name		      "FORCESNLPsolver"
       SID		      "1"
-      Ports		      [4, 1]
+      Ports		      [6, 1]
       Position		      [170, 99, 650, 180]
       ZOrder		      1
       FunctionName	      "FORCESNLPsolver_simulinkBlockcompact"
@@ -804,7 +804,9 @@ Model {
 	Help			"FORCESNLPsolver_simulinkBlockcompact provides an easy Simulink interface for simulating your customized solver.  \n"
 	"\nOUTPUTS = FORCESNLPsolver(INPUTS) solves an optimization problem where:\n\n"
 	"INPUTS:\n"
-	" - reinitialize - column vector of length 0\n "
+	" - ToleranceInequalities - column vector of length 0\n "
+" - ToleranceEqualities - column vector of length 0\n "
+" - reinitialize - column vector of length 0\n "
 " - xinit - column vector of length 5\n "
 " - x0 - column vector of length 70\n "
 " - all_parameters - column vector of length 100\n "
@@ -814,10 +816,12 @@ Model {
 
 	"\n For more information, see https://forces.embotech.com/Documentation/graphical_interface/index.html \n "
 
-	Display			"port_label('input', 1, 'reinitialize') \n  "
-"port_label('input', 2, 'xinit') \n  "
-"port_label('input', 3, 'x0') \n  "
-"port_label('input', 4, 'all_parameters') \n  "
+	Display			"port_label('input', 1, 'ToleranceInequalities') \n  "
+"port_label('input', 2, 'ToleranceEqualities') \n  "
+"port_label('input', 3, 'reinitialize') \n  "
+"port_label('input', 4, 'xinit') \n  "
+"port_label('input', 5, 'x0') \n  "
+"port_label('input', 6, 'all_parameters') \n  "
 "port_label('output', 1, 'outputs') \n "
 "if( exist('FORCES_PRO_Logo.jpg','file') ), image(imread('FORCES_PRO_Logo.jpg'),'center','on'); elseif( exist(['interface',filesep,'FORCES_PRO_Logo.jpg'],'file') ), image(imread(['interface',filesep,'FORCES_PRO_Logo.jpg']),'center','on'); elseif( exist(['FORCESNLPsolver',filesep,'interface',filesep,'FORCES_PRO_Logo.jpg'],'file') ), image(imread(['FORCESNLPsolver',filesep,'interface',filesep,'FORCES_PRO_Logo.jpg']),'center','on'); end \n "
 

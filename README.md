@@ -1,15 +1,41 @@
 # Practical Course MPFAV WS21: Motion Planning Using Model Predictive Control within the CommonRoad Framework
 ## Description of repository
-This repository is motion planning of autonomous driving using Model Predictive Control (MPC) based on CommonRoad Framework. We developed the algorithm with two tools, i.e. CasADi and Forcespro, to solve the optimization problem. Finally, we used two use cases to evaluate our algorithms, i.e. Lane Following and Collision Avoidance.
+This repository is motion planning of autonomous driving using Model Predictive Control (MPC) based on [CommonRoad Framework](https://commonroad.in.tum.de/). We develop the algorithm with two tools, i.e., CasADi (IPOPT solver) and Forcespro (SQP solver), to solve the optimization problem. Finally, we used two use cases to evaluate our algorithms, i.e. lane following and collision avoidance.
 
 The framework of our MPC Planner is following:
 
 ![image](./IMG/MPC_framework.png)
 
-## Structure of repository
-`TBD`
+The high-level planner integrated with CommonRoad, `Route Planner`, uses in `CommonRoad scenario` as input and generates a reference path for autonomous vehicle from initial position to a goal position. Afterwards, the task of `MPC optimizer` is to utilize the reference path and `generate a feasible and directly executable trajectory`. As an optimization-based approach, cost function and constraints are indispensable, and the optimizer tries to minimize the cost function regarding prediction horizon under some constraints (e.g. vehicle dynamics, drivability constraints, and etc.) and implement the optimal control inputs at the current time step. It then computes an optimal control sequence starting from the updated vehicle state, and implements the computed optimal control input for one time step.This procedure is implemented in a receding horizon way until the vehicle arrives at its goal position. 
 
-## Installation
+## Structure of repository
+Three main modules stand in `MPC_Planner` folder: `configuration.py`, `optimizer.py` and `mpc_planner.py`. Their main functions are displayed in the following structure diagram.  
+
+The test module and test results are in `test` folder. `test_mpc_planner.py` is an unittest for the algorithm.
+
+![image](./IMG/Framework of MPC Planner.png)
+
+## The required Python dependencies
+
+- matplotlib>=3.4.3  
+- numpy>=1.21.5
+- cvxpy>=1.1.17
+- ecos>=2.0.7
+- casadi>=3.5.1
+- commonroad-io>=2021.3
+- commonroad-vehicle-models>=2.0.0
+- commonroad-route-planner>=1.0.0
+- commonroad-drivability-checker>=2021.1
+
+For installation of commonroad packages, you can refer to [commonroad-vehicle-models>=2.0.0](https://gitlab.lrz.de/tum-cps/commonroad-vehicle-models), [commonroad-route-planner>=1.0.0](https://gitlab.lrz.de/tum-cps/commonroad-route-planner), [commonroad-drivability-checker>=2021.1](https://commonroad.in.tum.de/drivability-checker)
+
+The installation of CasADi and Forcespro is following.
+
+### Installation of CasADi
+```
+pip install casadi
+```
+
 ### Installation of Forcespro
 FORCESPRO is a client-server code generation system. The user describes the optimization problem using the client software, which communicates with the server for code generation (and compilation if applicable). The client software is the same for all users, independent of their license type.  
 
@@ -43,23 +69,41 @@ Applying for Trial License (for one month), you can refer to [here](https://my.e
 #### Commercial Licences
 For commercial Licences, please refer to [COMMERCIAL LICENSES](https://www.embotech.com/products/forcespro/licensing/) and the detailed steps of [registration](https://my.embotech.com/manual/registration?type=commercial).
 
-### Installation of CasADi
-```
-pip install casadi
-```
 
 ## Usage Example
 ### How to run
-The script you need run is `./test/test_mpc_planner.py`, in which you can switch the solvers from `forcespro` to `casadi` and vice versa. After that, in `test` folder, you can see a folder called `figures + scenario_name`, where the figures of planning result are saved, and `a gif` which can intuitively show the planning result.
+The script you need run is `./test/test_mpc_planner.py`. The algorithm has been tested in two scenarios `ZAM_Over-1_1`(without obstacle for lane following, with obstacle for collision avoidance) and `USA_Lanker-2_18_T-1`(for lane following). All required configurations of planner for each scenario or use case have been written in `./test/config_files/` with a .yaml file.
 
-But before that, you should prepare for the commonroad-based scenario in `scenarios` folder, which you want to plan, and configuration file in `.test/config_files/` folder.
+A tester only needs to change the config_name in line 16 of test_mpc_planner.py to test the scenario. You can also choose the framework_name to casadi or forcespro, or choose noised or unnoised situation in config_file. 
+After running, the results (gif, 2D plots etc.) are shown in test folder.
 
-![image](IMG/ggif_ZAM_Over-1_1.gif)
+For other [commonroad scenarios](https://commonroad.in.tum.de/scenarios), you can download, place it in `./scenarios` and create a config_file to test it.
+
+### Results
+Here are some gif results:  
+Result of lane following in ZAM_Over-1_1 using CasADi:
+![image](IMG/gif_casadi_ZAM_Over-1_1_lane_following.gif)
+Result of lane following in ZAM_Over-1_1 using Forcespro:
+![image](IMG/gif_forcespro_ZAM_Over-1_1_lane_following.gif)
+Result of lane following in USA_Lanker-2_18_T-1 using CasADi:
+![image](IMG/gif_casadi_USA_Lanker-2_18_T-1_lane_following.gif)
+Result of lane following in USA_Lanker-2_18_T-1 using Forcespro:
+![image](IMG/gif_forcespro_USA_Lanker-2_18_T-1_lane_following.gif)
+Result of collision avoidance in ZAM_Over-1_1 using CasADi:
+![image](IMG/gif_casadi_ZAM_Over-1_1_collision_avoidance.gif)
+Result of collision avoidance in ZAM_Over-1_1 using Forcespro:
+![image](IMG/gif_forcespro_ZAM_Over-1_1_collision_avoidance.gif)
+
+We can see that both CasADi and Forcespro perform well in these two scenarios. 2D plots for analysis are placed in `./test/` with corresponding folder name.
+
+We also compare the computation time of CasADi and Forcespro using same scenario and same use case on same computer.
+
+Here is an example comparison of lane following in ZAM_Over-1_1. It is obvious that  Forcespro with SQP solver is much more computationally efficient  (about  ten  times  faster)  than  CasADi  with  IPOPT solver.
+![image](IMG/comparison%20solve%20time%20LF%20ZAM.png)
+
 
 ## Literature
 
 [Yi, B., Bender, P., Bonarens, F., & Stiller, C. (2018). Model predictive trajectory planning for automated driving. IEEE Transactions on Intelligent Vehicles, 4(1), 24-38.](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8574950)
 
 [Gutjahr, B., Gröll, L., & Werling, M. (2016). Lateral vehicle trajectory optimization using constrained linear time-varying MPC. IEEE Transactions on Intelligent Transportation Systems, 18(6), 1586-1595.](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=7593251)
-
-`To Be Appended...`

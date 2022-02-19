@@ -5,6 +5,8 @@
 %       PARAMS.xinit - column vector of length 5
 %       PARAMS.x0 - column vector of length 70
 %       PARAMS.all_parameters - column vector of length 100
+%       PARAMS.ToleranceInequalities - scalar
+%       PARAMS.ToleranceEqualities - scalar
 %       PARAMS.reinitialize - scalar
 %
 %   OUTPUT returns the values of the last iteration of the solver where

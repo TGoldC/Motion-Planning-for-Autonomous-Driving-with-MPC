@@ -4,7 +4,6 @@ import forcespro
 import forcespro.nlp
 from MPC_Planner.configuration import VehicleDynamics
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad_dc.geometry.util import (chaikins_corner_cutting, compute_curvature_from_polyline, resample_polyline,
                                          compute_pathlength_from_polyline, compute_orientation_from_polyline, compute_polyline_length)
@@ -14,6 +13,21 @@ from commonroad.geometry.shape import Shape
 from MPC_Planner.configuration import compute_centers_of_approximation_circles, compute_approximating_circle_radius
 import sys
 import time
+
+
+def find_closest_distance_with_road_boundary(road_boundary, point):
+    """
+    Find closest distance with road boundary regarding point using casadi Framework
+    :params point: a list [x, y]
+    :params road_boundary: ndarray (n, 2)
+    :return: closest distance in SX
+    """
+    road_boundary_list = road_boundary.tolist()
+    num_points_boundary = len(road_boundary_list)
+    distance = ca.SX.sym('distance', num_points_boundary)
+    for i in range(num_points_boundary):
+        distance[i] = ca.sqrt((point[0] - road_boundary_list[i][0]) ** 2 + (point[1] - road_boundary_list[i][1]) ** 2)
+    return ca.mmin(distance)
 
 
 class Optimizer(object):
@@ -93,11 +107,14 @@ class ForcesproOptimizer(Optimizer):
         #                       deltaDot            aLong        x       y         delta          v           psi
         z_low_bound = np.array([self.deltav_min, -self.a_max, -np.inf, -np.inf, self.delta_min, self.v_min, -np.inf])  # 1.066 = 61 degree
         z_upper_bound = np.array([self.deltav_max, self.a_max, np.inf, np.inf, self.delta_max, self.v_max, np.inf])
+        circles_distance_low_bound = np.concatenate((np.array([0]), np.tile(np.array([(self.radius_ego + self.radius_obstacle) ** 2]), 9)))
+        circles_distance_upper_bound = np.concatenate((np.array([self.a_max ** 2]), np.tile(np.array([np.inf]), 9)))
 
+        # for road boundary constraints
         # define the upper/lower bounds of the distance between ego and obstacle vehicle
         # in all 9 constraints for circles distance, corresponding to circles_distance_inequality function
-        circles_distance_low_bound = np.tile(np.array([(self.radius_ego + self.radius_obstacle) ** 2]), 9)
-        circles_distance_upper_bound = np.tile(np.array([np.inf]), 9)
+        # circles_distance_low_bound = np.concatenate((np.array([0]), np.tile(np.array([(self.radius_ego + self.radius_obstacle) ** 2]), 9), np.tile(np.array([self.radius_ego]), 6)))
+        # circles_distance_upper_bound = np.concatenate((np.array([self.a_max ** 2]), np.tile(np.array([np.inf]), 15)))
 
         return z_low_bound, z_upper_bound, circles_distance_low_bound, circles_distance_upper_bound
 
@@ -111,10 +128,23 @@ class ForcesproOptimizer(Optimizer):
                         obstacle_rear_circle_x, obstacle_rear_circle_y], ndarray(10, model.N)
         :return: matrices of expressions for square distance between ego and obstacle vehicles
         """
+        psi_dot = z[5] * ca.tan(z[4]) / self.configuration.wheelbase
         # three circles represent ego and obstacle vehicle.
         # The distance between circles of two vehicles should be larger than 2*r --> 3 * 3 = 9 constraints in all
         ego_circles_centers_tuple = compute_centers_of_approximation_circles(z[2], z[3], self.configuration.p.l, self.configuration.p.w, z[6])
-        return ca.vertcat((ego_circles_centers_tuple[0][0] - params[4]) ** 2 + (ego_circles_centers_tuple[0][1] - params[5]) ** 2,
+
+        # for road boundary constraints
+        # ego vehicle is approximated to three circles, find the closest point on boundaries of both sides corresponding to three centers
+        # 2 boundaries * 3 circle points = 6 constraints
+        # closest_distance_left_boundary = [find_closest_distance_with_road_boundary(self.configuration.left_road_boundary, ego_circles_centers_tuple[0]),
+        #                                   find_closest_distance_with_road_boundary(self.configuration.left_road_boundary, ego_circles_centers_tuple[1]),
+        #                                   find_closest_distance_with_road_boundary(self.configuration.left_road_boundary, ego_circles_centers_tuple[2])]
+        # closest_distance_right_boundary = [find_closest_distance_with_road_boundary(self.configuration.right_road_boundary, ego_circles_centers_tuple[0]),
+        #                                    find_closest_distance_with_road_boundary(self.configuration.right_road_boundary, ego_circles_centers_tuple[1]),
+        #                                    find_closest_distance_with_road_boundary(self.configuration.right_road_boundary, ego_circles_centers_tuple[2])]
+
+        return ca.vertcat(z[1] ** 2 + (z[5] * psi_dot)**2,
+                          (ego_circles_centers_tuple[0][0] - params[4]) ** 2 + (ego_circles_centers_tuple[0][1] - params[5]) ** 2,
                           (ego_circles_centers_tuple[0][0] - params[6]) ** 2 + (ego_circles_centers_tuple[0][1] - params[7]) ** 2,
                           (ego_circles_centers_tuple[0][0] - params[8]) ** 2 + (ego_circles_centers_tuple[0][1] - params[9]) ** 2,
                           (ego_circles_centers_tuple[1][0] - params[4]) ** 2 + (ego_circles_centers_tuple[1][1] - params[5]) ** 2,
@@ -123,6 +153,12 @@ class ForcesproOptimizer(Optimizer):
                           (ego_circles_centers_tuple[2][0] - params[4]) ** 2 + (ego_circles_centers_tuple[2][1] - params[5]) ** 2,
                           (ego_circles_centers_tuple[2][0] - params[6]) ** 2 + (ego_circles_centers_tuple[2][1] - params[7]) ** 2,
                           (ego_circles_centers_tuple[2][0] - params[8]) ** 2 + (ego_circles_centers_tuple[2][1] - params[9]) ** 2)
+                          # closest_distance_left_boundary[0],
+                          # closest_distance_left_boundary[1],
+                          # closest_distance_left_boundary[2],
+                          # closest_distance_right_boundary[0],
+                          # closest_distance_right_boundary[1],
+                          # closest_distance_right_boundary[2])
 
     def cost_function(self, z, params):
         """
@@ -152,13 +188,11 @@ class ForcesproOptimizer(Optimizer):
                         obstacle_rear_circle_x, obstacle_rear_circle_y], ndarray(10, model.N)
         :return: Least square costs for last stage
         """
-        return (self.weights_setting["weight_x"] * 2 * (z[2] - params[0]) ** 2  # costs on deviating on the path in x-direction
-                + self.weights_setting["weight_y"] * 2 * (z[3] - params[1]) ** 2  # costs on deviating on the path in y-direction
-                + self.weights_setting["weight_steering_angle"] * 2 * z[4] ** 2  # penalty on steering angle
-                + self.weights_setting["weight_velocity"] * 2 * (z[5] - params[2]) ** 2  # penalty on velocity
-                + self.weights_setting["weight_heading_angle"] * 2 * (z[6] - params[3]) ** 2  # penalty on heading angle
-                + self.weights_setting["weight_velocity_steering_angle"] * 2 * z[0] ** 2  # penalty on input velocity of steering angle
-                + self.weights_setting["weight_long_acceleration"] * 2 * z[1] ** 2)  # penalty on input longitudinal acceleration
+        return (self.weights_setting["weight_x_terminate"] * (z[2] - params[0]) ** 2  # costs on deviating on the path in x-direction
+                + self.weights_setting["weight_y_terminate"] * (z[3] - params[1]) ** 2  # costs on deviating on the path in y-direction
+                + self.weights_setting["weight_steering_angle_terminate"] * z[4] ** 2  # penalty on steering angle
+                + self.weights_setting["weight_velocity_terminate"] * (z[5] - params[2]) ** 2  # penalty on velocity
+                + self.weights_setting["weight_heading_angle_terminate"] * (z[6] - params[3]) ** 2)  # penalty on heading angle
 
     def solver(self):
         """
@@ -170,7 +204,8 @@ class ForcesproOptimizer(Optimizer):
         model.N = self.predict_horizon  # horizon length
         model.nvar = 7  # number of variables = len(z)
         model.neq = 5  # number of equality constraints
-        model.nh = 9  # number of inequality constraint functions --> 3*3 = 9 constraints for distance between circles
+        model.nh = 10  # number of inequality constraint functions --> 3*3 = 9 constraints for distance between circles
+        # model.nh = 16 # for road boundary constraints --> 6 more constraints added
         model.npar = 10  # number of runtime parameters
 
         # define constraints
@@ -200,7 +235,9 @@ class ForcesproOptimizer(Optimizer):
         codeoptions.solvemethod = 'SQP_NLP'  # choose the solver method Sequential Quadratic Programming
         codeoptions.nlp.bfgs_init = 2.5 * np.identity(7)  # np.identity creat a square matrix with 1 in the diagonal line
         codeoptions.sqp_nlp.maxqps = 1  # maximum number of quadratic problems to be solved
-        codeoptions.sqp_nlp.reg_hessian = 5e-9  # increase this if exitflag=-8    default: 5e-9
+        codeoptions.sqp_nlp.reg_hessian = 5e-6  # increase this if exitflag=-8    default: 5e-9
+        codeoptions.nlp.TolIneq = -1 # Tolerance on inequality constraints
+        codeoptions.nlp.TolEq = -1  # Tolerance on equality constraints
 
         # Creates code for symbolic model formulation given above, then contacts server to generate new solver
         solver = model.generate_solver(options=codeoptions)
@@ -236,7 +273,9 @@ class ForcesproOptimizer(Optimizer):
         x[:, 0] = xinit
 
         problem = {"x0": x0,
-                   "xinit": xinit}
+                   "xinit": xinit,
+                   "ToleranceEqualities": 1e-1,
+                   "ToleranceInequalities": 1e-1}
 
         start_pred = np.reshape(problem["x0"], (7, model.N))  # first prediction corresponds to initial guess
 
@@ -296,7 +335,7 @@ class ForcesproOptimizer(Optimizer):
             for i in range(0, model.N):
                 try:
                     temp[:, i] = output['x{0:1d}'.format(i + 1)]  # {0:02d}
-                except ValueError:
+                except:
                     temp[:, i] = output['x{0:02d}'.format(i + 1)]
 
             pred_u = temp[0:2, :]  # N predicted inputs, 2*N
@@ -307,7 +346,10 @@ class ForcesproOptimizer(Optimizer):
                 u[:, k] = pred_u[:, 0]
             else:
                 noise_mean = np.array([0, 0])
-                noise_std = np.array([0.08, 0.08])  # The larger standard deviation is, the wider range of noise is.
+                if self.configuration.use_case == "lane_following":
+                    noise_std = np.array([0.1, 0.1])  # The larger standard deviation is, the wider range of noise is.
+                else:
+                    noise_std = np.array([0.05, 0.05])  # Use case "Collision Avoidance" need a lower noise, otherwise, it cannot solve the problem
                 noise = np.random.normal(noise_mean, noise_std, (2,))
                 u[:, k] = pred_u[:, 0] + noise
 
@@ -329,12 +371,27 @@ class CasadiOptimizer(Optimizer):
         super(CasadiOptimizer, self).__init__(configuration, init_values, predict_horizon)
 
     def equal_constraints(self, states, ref_states, controls, f):
+        """
+        Define constraints
+        """
+        # friction circle constraint
         g = [ca.sqrt(((controls[1]) ** 2 + (states[3] * ((ca.tan(states[2]) * states[3]) / 2.578))) ** 2), states[:, 0] - ref_states[:, 0]]  # equal constraints
+        # x_k+1 = x_k + f(x,u)*T    
         for i in range(self.predict_horizon):
             x_next_ = f(states[:, i], controls[:, i])*self.delta_t + states[:, i]
             g.append(states[:, i+1]-x_next_)
+        # Define the expressions for the squared distance between ego and obstacle vehicle, in all 9 expressions
         for i in range(self.predict_horizon+1):
             ego_circles_centers_tuple = compute_centers_of_approximation_circles(states[0,i], states[1,i], self.configuration.p.l, self.configuration.p.w, states[4,i])
+            # for road boundary constraints
+            # ego vehicle is approximated to three circles, find the closest point on boundaries of both sides corresponding to three centers
+            # 2 boundaries * 3 circle points = 6 constraints
+            # closest_distance_left_boundary = [find_closest_distance_with_road_boundary(self.configuration.left_road_boundary, ego_circles_centers_tuple[0]),
+            #                                   find_closest_distance_with_road_boundary(self.configuration.left_road_boundary, ego_circles_centers_tuple[1]),
+            #                                   find_closest_distance_with_road_boundary(self.configuration.left_road_boundary, ego_circles_centers_tuple[2])]
+            # closest_distance_right_boundary = [find_closest_distance_with_road_boundary(self.configuration.right_road_boundary, ego_circles_centers_tuple[0]),
+            #                                    find_closest_distance_with_road_boundary(self.configuration.right_road_boundary, ego_circles_centers_tuple[1]),
+            #                                    find_closest_distance_with_road_boundary(self.configuration.right_road_boundary, ego_circles_centers_tuple[2])]
             g.append(ca.sqrt((ego_circles_centers_tuple[0][0] - self.obstacle_circles_centers_tuple[0][0]) ** 2 + (ego_circles_centers_tuple[0][1] - self.obstacle_circles_centers_tuple[0][1]) ** 2)) # should be bigger than 2r
             g.append(ca.sqrt((ego_circles_centers_tuple[0][0] - self.obstacle_circles_centers_tuple[0][0]) ** 2 + (ego_circles_centers_tuple[0][1] - self.obstacle_circles_centers_tuple[0][1]) ** 2))
             g.append(ca.sqrt((ego_circles_centers_tuple[0][0] - self.obstacle_circles_centers_tuple[0][0]) ** 2 + (ego_circles_centers_tuple[0][1] - self.obstacle_circles_centers_tuple[0][1]) ** 2))
@@ -344,15 +401,29 @@ class CasadiOptimizer(Optimizer):
             g.append(ca.sqrt((ego_circles_centers_tuple[2][0] - self.obstacle_circles_centers_tuple[2][0]) ** 2 + (ego_circles_centers_tuple[2][1] - self.obstacle_circles_centers_tuple[2][1]) ** 2))
             g.append(ca.sqrt((ego_circles_centers_tuple[2][0] - self.obstacle_circles_centers_tuple[2][0]) ** 2 + (ego_circles_centers_tuple[2][1] - self.obstacle_circles_centers_tuple[2][1]) ** 2))
             g.append(ca.sqrt((ego_circles_centers_tuple[2][0] - self.obstacle_circles_centers_tuple[2][0]) ** 2 + (ego_circles_centers_tuple[2][1] - self.obstacle_circles_centers_tuple[2][1]) ** 2))
+            # 6 constraints for road bound
+            # g.append(closest_distance_left_boundary[0])
+            # g.append(closest_distance_left_boundary[1])
+            # g.append(closest_distance_left_boundary[2])
+            # g.append(closest_distance_right_boundary[0])
+            # g.append(closest_distance_right_boundary[1])
+            # g.append(closest_distance_right_boundary[2])
         return g
 
     def inequal_constraints(self):
-        # states constraints
+        """
+        Define lower bound and upper bound for each constraint
+        lbg: lower bound of constraints g
+        ubg: upper bound of constraints g
+        lbx: lower bound of constraints x 
+        ubx: upper bound of constraints x
+        """
+        # friction circle constraints with upper bound a_max        
         lbg = []
         ubg = []
         lbg.append(0.0)
         ubg.append(self.a_max)
-        # 5 states
+        # 5 states constraints for x_k+1 = x_k + f(x,u)*T
         for _ in range(self.predict_horizon+1):
             lbg.append(0.0)
             lbg.append(0.0)
@@ -375,6 +446,12 @@ class CasadiOptimizer(Optimizer):
             lbg.append((self.radius_ego + self.radius_obstacle))
             lbg.append((self.radius_ego + self.radius_obstacle))
             lbg.append((self.radius_ego + self.radius_obstacle))
+            # lbg.append(self.radius_ego)
+            # lbg.append(self.radius_ego)
+            # lbg.append(self.radius_ego)
+            # lbg.append(self.radius_ego)
+            # lbg.append(self.radius_ego)
+            # lbg.append(self.radius_ego)
             ubg.append(np.inf)
             ubg.append(np.inf)
             ubg.append(np.inf)
@@ -384,13 +461,21 @@ class CasadiOptimizer(Optimizer):
             ubg.append(np.inf)
             ubg.append(np.inf)
             ubg.append(np.inf)
+            # ubg.append(np.inf)
+            # ubg.append(np.inf)
+            # ubg.append(np.inf)
+            # ubg.append(np.inf)
+            # ubg.append(np.inf)
+            # ubg.append(np.inf)
         lbx = []
         ubx = []
+        # control inputs constraint
         for _ in range(self.predict_horizon):
             lbx.append(self.deltav_min)
             ubx.append(self.deltav_max)
             lbx.append(-np.inf)
             ubx.append(self.a_max)
+        # states constraint
         for _ in range(self.predict_horizon+1):  # note that this is different with the method using structure
             lbx.append(-np.inf)
             # lbx.append(-1.2501)
@@ -406,10 +491,18 @@ class CasadiOptimizer(Optimizer):
         return lbg, ubg, lbx, ubx
 
     def cost_function(self, states, controls, reference_states):
+        """
+        Define cost function with states cost, input cost and end term cost
+        :return: Least Square Lost
+        """
         obj = 0
-        Q = np.array([[2.3, 0.0, 0.0, 0.0, 0.0], [0.0, 2.3, 0.0, 0.0, 0.0], [0.0, 0.0, 500, 0.0, 0.0], [0.0, 0.0, 0.0, 0.1, 0.0], [0.0, 0.0, 0.0, 0.0, 160]]) # for ZAM Over
-        R = np.array([[0.8, 0.0], [0.0, 0.8]])
-        P = np.diag([82.21, 82.21, 100.95, 0.01, 110.04]) 
+        # define penalty matrices
+        Q = np.array([[self.weights_setting["weight_x"], 0.0, 0.0, 0.0, 0.0], [0.0, self.weights_setting["weight_y"], 0.0, 0.0, 0.0],
+                      [0.0, 0.0, self.weights_setting["weight_steering_angle"], 0.0, 0.0], [0.0, 0.0, 0.0, self.weights_setting["weight_velocity"], 0.0],
+                      [0.0, 0.0, 0.0, 0.0, self.weights_setting["weight_heading_angle"]]])  # for ZAM Over
+        R = np.array([[self.weights_setting["weight_velocity_steering_angle"], 0.0], [0.0, self.weights_setting["weight_long_acceleration"]]])
+        P = np.diag([self.weights_setting["weight_x_terminate"], self.weights_setting["weight_y_terminate"], self.weights_setting["weight_steering_angle_terminate"],
+                     self.weights_setting["weight_velocity_terminate"], self.weights_setting["weight_heading_angle_terminate"]])
         # cost
         for i in range(self.predict_horizon):
             # obj = obj + ca.mtimes([(X[:, i]-P[3:]).T, Q, X[:, i]-P[3:]]) + ca.mtimes([U[:, i].T, R, U[:, i]])
@@ -418,6 +511,11 @@ class CasadiOptimizer(Optimizer):
         return obj
 
     def solver(self):
+        """
+        Use casadi symblolic framework define NLP problem and create IPOPT solver
+        :return: solver: casadi solver with ipopt plugin
+                      f: dynamic equations
+        """
         # define prediction horizon
         horizon = self.predict_horizon
         # set states variables
@@ -433,11 +531,11 @@ class CasadiOptimizer(Optimizer):
         u1 = ca.SX.sym('u1')
         controls = ca.vertcat(*[u0, u1])
         num_controls = controls.size()[0]
-        # get euqations from dynamics.py
+        # get dynamic euqations
         d = VehicleDynamics()
         rhs = d.KS_casadi(states, controls)
         f = ca.Function('f', [states, controls], [rhs], ['input_state', 'control_input'], ['rhs'])
-        # for MPC
+        # # build states & control inputs & reference state & reference input for MPC
         U = ca.SX.sym('U', num_controls, horizon)
         X = ca.SX.sym('X', num_states, horizon + 1)
         U_ref = ca.SX.sym('U_ref', num_controls, horizon)
@@ -446,32 +544,40 @@ class CasadiOptimizer(Optimizer):
         # define cost function
         cost_function = self.cost_function(X, U, X_ref)
 
-        # states constrains
+        # get constrains
         g = self.equal_constraints(X, X_ref, U, f)
-
+        # define optimize variables for NLP problem/ multi-shooting method
         opt_variables = ca.vertcat( ca.reshape(U, -1, 1), ca.reshape(X, -1, 1))
+        # define optimize parameters for NLP problem
         opt_params = ca.vertcat(ca.reshape(U_ref, -1, 1), ca.reshape(X_ref, -1, 1))
-
+        # build NLP problem
         nlp_prob = {'f': cost_function, 'x': opt_variables, 'p': opt_params, 'g': ca.vcat(g)}  # here also can use ca.vcat(g) or ca.vertcat(*g)
+        # parameters for ipopt solver
         opts_setting = {'ipopt.max_iter': 100, 'ipopt.print_level': 0, 'print_time': 0, 'ipopt.acceptable_tol': 1e-8, 'ipopt.acceptable_obj_change_tol': 1e-6, }
-
+        # NLP solver created with ipopt plugin
         solver = ca.nlpsol('solver', 'ipopt', nlp_prob, opts_setting)
 
         return solver, f
 
     def optimize(self):
+        """
+        run simulation for MPC problrm
+        :return: traj_s: planned optimal states -> ndarray(iter_length, num_states)
+                 u: planned optimal control inputs -> ndarray(iter_length, num_inputs)
+                 t_v: solve time for each time step -> ndarray(iter_length,)
+        """
         # model parameters
         num_states = 5
         num_controls = 2
-        # get MPC optimizer from optimizer_casadi
-        # mpc_obj = MPC_car(state_dim=num_states, T=0.1, N=N)
+        # constraints
         lbg, ubg, lbx, ubx = self.inequal_constraints()
-
+        # initial time
         t0 = 0.0
         # initial state
         init_state = np.array([self.init_position[0], self.init_position[1], 0.0, self.init_velocity, self.init_orientation]).reshape(-1, 1)
+        # set current state
         current_state = init_state.copy()
-        u0 = np.array([0.0, 0.0]*self.predict_horizon).reshape(-1, 2).T  # np.ones((N, 2)) # controls
+        u0 = np.array([0.0, 0.0]*self.predict_horizon).reshape(-1, 2).T  
         next_trajectories = np.tile(current_state.reshape(1, -1), self.predict_horizon+1).reshape(self.predict_horizon+1, -1)
         next_states = next_trajectories.copy()
         next_controls = np.zeros((self.predict_horizon, 2))
@@ -485,22 +591,31 @@ class CasadiOptimizer(Optimizer):
         mpciter = 0
         start_time = time.time()
         index_t = []
-        # simulation time
-
+        
+        # start simulation
         for i in range(self.iter_length):
+            # reference path waypoints (just for 2D figure)
             xs = np.array([self.resampled_path_points[i, 0], self.resampled_path_points[i, 1], 0, self.desired_velocity, self.orientation[i]]).reshape(-1, 1)
-            # set parameter
+            # set parameters
             c_p = np.concatenate((next_controls.reshape(-1, 1), next_trajectories.reshape(-1, 1)))
+            # initial variables
             init_control = np.concatenate((u0.T.reshape(-1, 1), next_states.T.reshape(-1, 1)))
             t_ = time.time()
+            # get solver
             sol, f = self.solver()
+            # solving NLP problem
             res = sol(x0=init_control, p=c_p, lbg=lbg, lbx=lbx, ubg=ubg, ubx=ubx)
             index_t.append(time.time() - t_)
             estimated_opt = res['x'].full() # the feedback is in the series [u0, x0, u1, x1, ...]
-            u0 = estimated_opt[:int(num_controls*self.predict_horizon)].reshape(self.predict_horizon, num_controls).T # + np.random.normal(0,0.2,20).reshape(num_controls, self.predict_horizon)
-            # + np.random.normal(0,0.1,20).reshape(num_controls, self.predict_horizon)# (n_controls, N)
-            # + np.random.normal(0,1,20).reshape(num_controls, self.predict_horizon) # add a gaussian noise
-            x_m = estimated_opt[int(num_controls*self.predict_horizon):].reshape(self.predict_horizon+1, num_states).T# [n_states, N]
+            # get optimal control input with Gaussian noise
+            if self.configuration.noised:
+                if self.configuration.use_case == "lane_following":
+                    u0 = estimated_opt[:int(num_controls*self.predict_horizon)].reshape(self.predict_horizon, num_controls).T + np.random.normal(0, 0.1, 20).reshape(num_controls, self.predict_horizon)
+                else:  # get optimal con"Collision Avoidance" need a lower noise
+                    u0 = estimated_opt[:int(num_controls * self.predict_horizon)].reshape(self.predict_horizon, num_controls).T + np.random.normal(0, 0.05, 20).reshape(num_controls, self.predict_horizon)
+            else:
+                u0 = estimated_opt[:int(num_controls * self.predict_horizon)].reshape(self.predict_horizon, num_controls).T
+            x_m = estimated_opt[int(num_controls*self.predict_horizon):].reshape(self.predict_horizon+1, num_states).T  # [n_states, N]
             # + np.random.normal(0,1,20).reshape(num_states, N) # add a gaussian noise
             x_c.append(x_m.T)
             u_c.append(u0[:, 0])
@@ -509,34 +624,28 @@ class CasadiOptimizer(Optimizer):
             current_state = ca.reshape(current_state, -1, 1)
             current_state = current_state.full()
             xx.append(current_state)
+            # get reference path in each iteration
             next_trajectories, next_controls = self.desired_command_and_trajectory(i, current_state, self.predict_horizon)
             traj.append(current_state)
             ref.append(xs)
             mpciter = mpciter + 1
         t_v = np.array(index_t)
+        # compute average solving time for each optimization problem
         print(t_v.mean())
         print((time.time() - start_time) / mpciter)
 
         u = np.array(u_c)
-        # plot reference path and actual path
+        # reshape optimal path
         traj_s = np.array(np.squeeze(traj))
         traj_s = np.insert(traj_s, 0, init_state.T, axis=0)
         traj_s = np.delete(traj_s, -1, axis=0)
-        print(traj_s.shape)
-        traj_r = np.array(np.squeeze(ref))
-        plt.figure()
-        plt.plot(traj_s[:, 0], traj_s[:, 1], label='real path')
-        plt.plot(traj_r[:, 0], traj_r[:, 1], label='reference path')
-        plt.plot()
-        plt.xlabel('x position [m]')
-        plt.ylabel('y position [m]')
-        plt.legend(frameon=False, loc="lower right", fontsize='large')
-        plt.savefig('path_zam')
-        plt.show()
 
         return traj_s, u, t_v
 
     def shift_movement(self, t0, x0, u, x_f, f):
+        """
+        Use movement function to let the vehicle move according to its dynamic equations
+        """
         f_value = f(x0, u[:, 0])
         st = x0 + self.delta_t * f_value.full()
         t = t0 + self.delta_t
@@ -546,6 +655,15 @@ class CasadiOptimizer(Optimizer):
         return t, st, u_end.T, x_f
 
     def desired_command_and_trajectory(self, i, x0_, N_):
+        """
+        compute reference path of iteration i
+        input: current_iteration
+               current_states -> ndarray(num_states,1)
+               prediction_horizon 
+        output: reference states -> ndarray(prediction_horizon+1, num_states)
+                reference inputs -> ndarray(prediction_horizon, num_inputs)
+        reference inputs are always zero here
+        """
         x_ = x0_.reshape(1, -1).tolist()[0]
         u_ = []
         # states for the next N_ trajectories

@@ -13,7 +13,7 @@ sys.path.append("..")
 class TestMPCPlanner(unittest.TestCase):
     def setUp(self) -> None:
         super().setUp()
-        config_name = "config_files/config_CA_ZAM_Over-1_1.yaml"  # config_LF_ZAM_Over-1_1.yaml  or  config_LF_USA_Lanker-2_18_T-1
+        config_name = "config_files/config_LF_ZAM_Over-1_1.yaml"  # config_LF_ZAM_Over-1_1.yaml  or  config_LF_USA_Lanker-2_18_T-1
         with open(config_name, 'r') as stream:
             try:
                 self.settings = yaml.load(stream, Loader=yaml.Loader)
