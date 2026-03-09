@@ -13,7 +13,7 @@ Three main modules stand in `MPC_Planner` folder: `configuration.py`, `optimizer
 
 The test module and test results are in `test` folder. `test_mpc_planner.py` is an unittest for the algorithm.
 
-![image](./IMG/Framework of MPC Planner.png)
+![image](./IMG/Framework%20of%20MPC%20Planner.png)
 
 
 ## The required Python dependencies
